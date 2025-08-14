@@ -2,26 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Brand tokens */
 :root {
   --brand-primary: #6a2e3e;
   --brand-secondary: #faf6d0;
 }
 
-body {
-  @apply bg-zinc-50 text-zinc-900;
+/* Global base styles (no @apply) */
+html, body {
+  min-height: 100%;
 }
 
-.btn {
-  @apply inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition shadow-sm border border-zinc-200;
-  background: var(--brand-primary);
-  color: white;
+body {
+  background-color: #fafafa; /* like bg-zinc-50 */
+  color: #0a0a0a;            /* like text-zinc-900 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-.btn:disabled { @apply opacity-60 cursor-not-allowed; }
+
+/* Simple utility classes without @apply */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;      /* rounded-xl */
+  padding: 0.5rem 1rem;        /* px-4 py-2 */
+  font-size: 0.875rem;         /* text-sm */
+  font-weight: 500;            /* font-medium */
+  transition: box-shadow 150ms, transform 150ms, opacity 150ms;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06); /* shadow-sm */
+  border: 1px solid #e4e4e7;   /* border-zinc-200 */
+  background: var(--brand-primary);
+  color: #fff;
+}
+.btn:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
 
 .btn-ghost {
-  @apply inline-flex items-center rounded-xl px-3 py-2 text-sm font-medium border border-zinc-200 bg-white;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.75rem;      
+  padding: 0.5rem 0.75rem;     
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid #e4e4e7;   /* border-zinc-200 */
+  background: #fff;
+  color: #0a0a0a;
 }
 
 .card {
-  @apply rounded-2xl bg-white shadow-sm border border-zinc-200;
+  border-radius: 1rem;         /* rounded-2xl */
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06); /* shadow-sm */
+  border: 1px solid #e4e4e7;   /* border-zinc-200 */
 }
