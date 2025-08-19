@@ -2,14 +2,18 @@
 import { useEffect, useState } from "react";
 
 export default function DebugPage() {
-  const [base] = useState<string | undefined>(process.env.NEXT_PUBLIC_API_BASE_URL);
+  const base =
+    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ||
+    "https://enrich-backend-new.onrender.com"; // fallback
+
   const [result, setResult] = useState<string>("(waiting)");
   const [status, setStatus] = useState<string>("");
 
   useEffect(() => {
-    const doTest = async () => {
+    (async () => {
       try {
-        const email = `debug-${Date.now()}@enrich.dev`; // safe domain, no '+'
+        setStatus("RUNNING");
+        const email = `debug-${Date.now()}@enrich.dev`;
         const res = await fetch(`${base}/auth/signup`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -28,14 +32,14 @@ export default function DebugPage() {
         setStatus("NETWORK ERROR");
         setResult(String(e?.message || e));
       }
-    };
-    if (base && !base.startsWith("undefined")) doTest();
+    })();
   }, [base]);
 
   return (
     <div style={{padding: 24, fontFamily: "Inter, system-ui, Arial", maxWidth: 900, margin: "40px auto"}}>
       <h1>/debug</h1>
-      <p><strong>NEXT_PUBLIC_API_BASE_URL:</strong> {String(base)}</p>
+      <p><strong>NEXT_PUBLIC_API_BASE_URL:</strong> {String(process.env.NEXT_PUBLIC_API_BASE_URL)}</p>
+      <p><strong>Using base:</strong> {base}</p>
       <p><strong>Result status:</strong> {status}</p>
       <pre style={{whiteSpace: "pre-wrap", background: "#f6f6f6", padding: 12, borderRadius: 8}}>{result}</pre>
       <p style={{marginTop: 12, fontSize: 12, opacity: 0.8}}>
