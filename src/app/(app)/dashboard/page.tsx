@@ -2,45 +2,30 @@
 import { useEffect, useMemo, useState } from "react";
 
 type Link = { label: string; url: string };
-type Report = {
-  id?: string;
-  report_type?: string;
-  created_at?: string;
-  links?: Link[];
-  [key: string]: unknown;
-};
+type Report = { id?: string; report_type?: string; created_at?: string; links?: Link[]; [k: string]: unknown };
 type Profile = { id?: string; user_id?: string; business_name?: string; [k: string]: unknown };
 
 function normalizeReports(raw: any): Report[] {
-  const arr =
-    Array.isArray(raw) ? raw :
-    raw?.reports ?? raw?.items ?? raw?.data ?? [];
+  const arr = Array.isArray(raw) ? raw : raw?.reports ?? raw?.items ?? raw?.data ?? [];
   if (!Array.isArray(arr)) return [];
-
+  const pickUrl = (x: any) => (typeof x === "string" && /^https?:\/\//.test(x) ? x : undefined);
   return arr.map((r: any) => {
     const id = r.id ?? r.report_id ?? r.uuid ?? r.pk ?? undefined;
     const created_at = r.created_at ?? r.createdAt ?? r.created ?? r.timestamp ?? undefined;
     const report_type = r.report_type ?? r.type ?? r.kind ?? "Report";
-
     const links: Link[] = [];
-    const add = (label: string, url?: any) => {
-      if (!url || typeof url !== "string") return;
-      links.push({ label, url });
-    };
-    // common fields
-    add("CSV", r.csv_url ?? r.csvUrl ?? r.csv);
-    add("PDF", r.pdf_url ?? r.pdfUrl ?? r.pdf);
-    add("JSON", r.json_url ?? r.jsonUrl ?? r.json);
-    // generic files array
+    const add = (label: string, url?: string) => url && links.push({ label, url });
+    add("CSV", pickUrl(r.csv_url ?? r.csvUrl ?? r.csv));
+    add("PDF", pickUrl(r.pdf_url ?? r.pdfUrl ?? r.pdf));
+    add("JSON", pickUrl(r.json_url ?? r.jsonUrl ?? r.json));
     if (Array.isArray(r.files)) {
       for (const f of r.files) {
-        const url = f?.url ?? f?.public_url ?? f?.signed_url;
-        if (!url) continue;
+        const url = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
         const label = (f?.label ?? f?.type ?? f?.kind ?? f?.format ?? f?.filename ?? "File").toString().toUpperCase();
-        links.push({ label, url });
+        if (url) links.push({ label, url });
       }
     }
-    // generic fields that look like urls
+    // catch any other direct url fields
     for (const k of Object.keys(r)) {
       const v = r[k];
       if (typeof v === "string" && /^https?:\/\//.test(v)) {
@@ -50,7 +35,6 @@ function normalizeReports(raw: any): Report[] {
         else if (u.endsWith(".json")) add("JSON", v);
       }
     }
-
     return { id, created_at, report_type, links, ...r };
   });
 }
@@ -68,6 +52,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [genStatus, setGenStatus] = useState<string>("");
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
+  const dlog = (s: string) => setDebugLog((p) => [...p, s]);
 
   useEffect(() => {
     try {
@@ -77,38 +64,58 @@ export default function DashboardPage() {
     } catch {}
   }, []);
 
+  async function tryFetchList(bizId: string, userId: string | undefined) {
+    const tries: { label: string; url: string }[] = [
+      { label: "list/{bizId}", url: `${base}/reports/list/${bizId}` },
+      ...(userId ? [{ label: "list?user_id=", url: `${base}/reports/list?user_id=${encodeURIComponent(userId)}` }] : []),
+      { label: "reports?business_id=", url: `${base}/reports?business_id=${encodeURIComponent(bizId)}` },
+      ...(userId ? [{ label: "reports?user_id=", url: `${base}/reports?user_id=${encodeURIComponent(userId)}` }] : []),
+      { label: "list (no params)", url: `${base}/reports/list` },
+      { label: "reports (no params)", url: `${base}/reports` },
+    ];
+    for (const t of tries) {
+      try {
+        dlog(`GET ${t.label} → ${t.url}`);
+        const res = await fetch(t.url, { headers: { Authorization: `Bearer ${token}` } });
+        const text = await res.text();
+        dlog(`↳ ${res.status} ${res.ok ? "OK" : "ERR"} · ${text.slice(0, 140)}${text.length > 140 ? "…" : ""}`);
+        if (!res.ok) continue;
+        const parsed = text ? JSON.parse(text) : {};
+        const list = normalizeReports(parsed);
+        if (Array.isArray(list) && list.length > 0) {
+          dlog(`✔ picked: ${t.label} (${list.length} items)`);
+          return list;
+        }
+      } catch (e: any) {
+        dlog(`⚠ ${t.label} failed: ${e?.message || e}`);
+      }
+    }
+    return [];
+  }
+
   async function fetchProfileAndReports() {
     if (!token) return;
     setLoading(true);
     setErr(null);
+    setDebugLog([]);
     try {
       // 1) /auth/me
-      const meRes = await fetch(`${base}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      dlog(`GET /auth/me`);
+      const meRes = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
       const meText = await meRes.text();
+      dlog(`↳ ${meRes.status} ${meRes.ok ? "OK" : "ERR"} · ${meText.slice(0, 140)}${meText.length > 140 ? "…" : ""}`);
       let me: any = {};
       try { me = meText ? JSON.parse(meText) : {}; } catch {}
       if (!meRes.ok) throw new Error(me?.detail?.message || meText || "Failed to load profile");
-
       const p = (me?.profile || me?.data || me) as Profile;
       setProfile(p);
+
       const bizId = p?.id || p?.user_id;
+      const userId = p?.user_id;
       if (!bizId) throw new Error("No business/profile id on profile");
 
-      // 2) list reports (try path param, then fallback to query)
-      let listRes = await fetch(`${base}/reports/list/${bizId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!listRes.ok) {
-        listRes = await fetch(`${base}/reports/list?user_id=${encodeURIComponent(p.user_id || "")}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-      const listText = await listRes.text();
-      let parsed: any = {};
-      try { parsed = listText ? JSON.parse(listText) : {}; } catch {}
-      const list = normalizeReports(parsed);
+      // 2) list with multiple strategies
+      const list = await tryFetchList(String(bizId), userId ? String(userId) : undefined);
       setReports(list);
     } catch (e: any) {
       setErr(e?.message || "Failed to load dashboard");
@@ -137,14 +144,12 @@ export default function DashboardPage() {
       if (profile.id) payload["business_id"] = profile.id;
       if (!profile.id && profile.user_id) payload["user_id"] = profile.user_id;
 
-      // primary endpoint
       let res = await fetch(`${base}/reports/generate-business-overview`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
 
-      // simple fallback if server expects slightly different shape
       if (!res.ok && profile.user_id && !payload["user_id"]) {
         res = await fetch(`${base}/reports/generate-business-overview`, {
           method: "POST",
@@ -175,7 +180,8 @@ export default function DashboardPage() {
 
       <div style={{display: "flex", gap: 12, alignItems: "center", marginBottom: 16}}>
         <button onClick={generateReport}>Generate Business Overview</button>
-        <button onClick={fetchProfileAndReports} title="Refresh list">Refresh</button>
+        <button onClick={fetchProfileAndReports}>Refresh</button>
+        <button onClick={() => setDebugOpen((v) => !v)}>{debugOpen ? "Hide" : "Show"} debug</button>
         {genStatus && <span style={{fontSize: 12, opacity: 0.7}}>{genStatus}</span>}
       </div>
 
@@ -214,6 +220,16 @@ export default function DashboardPage() {
           </ul>
         )}
       </div>
+
+      {debugOpen && (
+        <div style={{marginTop: 16, padding: 12, background: "#fafafa", border: "1px dashed #ddd", borderRadius: 8}}>
+          <div style={{fontWeight: 600, marginBottom: 6}}>Debug log</div>
+          <pre style={{whiteSpace: "pre-wrap"}}>{debugLog.join("\n") || "(empty)"}</pre>
+          <div style={{fontSize: 12, opacity: 0.7, marginTop: 6}}>
+            bizId: {profile?.id || "(none)"} | userId: {profile?.user_id || "(none)"} | base: {base}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
