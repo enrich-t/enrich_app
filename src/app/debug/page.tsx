@@ -2,19 +2,19 @@
 import { useEffect, useState } from "react";
 
 export default function DebugPage() {
-  const [base, setBase] = useState<string | undefined>(process.env.NEXT_PUBLIC_API_BASE_URL);
+  const [base] = useState<string | undefined>(process.env.NEXT_PUBLIC_API_BASE_URL);
   const [result, setResult] = useState<string>("(waiting)");
   const [status, setStatus] = useState<string>("");
 
   useEffect(() => {
     const doTest = async () => {
       try {
+        const email = `debug-${Date.now()}@enrich.dev`; // safe domain, no '+'
         const res = await fetch(`${base}/auth/signup`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // unique email each load so backend won't clash
           body: JSON.stringify({
-            email: `debug+${Date.now()}@example.com`,
+            email,
             password: "P@ssw0rd123!",
             business_name: "Debug Co",
             brand_primary_colour: "#6a2e3e",
