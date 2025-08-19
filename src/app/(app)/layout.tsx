@@ -17,6 +17,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {!authed && <Link href="/login">Log in</Link>}
         {authed && <Link href="/dashboard">Dashboard</Link>}
         {authed && <Link href="/profile">Profile</Link>}
+        {authed && <Link href="/logout">Logout</Link>}
       </header>
       <main>{children}</main>
     </div>
