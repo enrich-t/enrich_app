@@ -76,7 +76,6 @@ function normalizeReports(raw: any): Report[] {
 /* ---------- tiny UI kit (inline styles so no Tailwind issues) ---------- */
 const S = {
   page: { fontFamily: "Inter, ui-sans-serif, system-ui, Arial", maxWidth: 1100, margin: "24px auto", padding: "0 16px" },
-  row: { display: "grid", gap: 16 },
   rowCols: (n: number) => ({ display: "grid", gap: 16, gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }),
   card: { background: "#fff", border: "1px solid #eee", borderRadius: 16, padding: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
   h2: { fontSize: 24, fontWeight: 700, margin: "0 0 8px" },
@@ -177,7 +176,162 @@ export default function DashboardPage() {
     try {
       dlog(`GET /auth/me`);
       const meRes = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-      const meText = await res.text(); // <-- will be fixed below
-    } catch {}
+      const meText = await meRes.text(); dlog(`↳ ${meRes.status} ${meRes.ok ? "OK" : "ERR"} · ${meText.slice(0, 140)}${meText.length > 140 ? "…” : ""}`);
+      let me: any = {}; try { me = meText ? JSON.parse(meText) : {}; } catch {}
+      if (!meRes.ok) throw new Error(me?.detail?.message || meText || "Failed to load profile");
+      const p = (me?.profile || me?.data || me) as Profile; setProfile(p);
+      const bizId = p?.id || p?.user_id; if (!bizId) throw new Error("No business/profile id on profile");
+      const list = await tryFetchList(String(bizId)); setReports(list);
+    } catch (e: any) { setErr(e?.message || "Failed to load dashboard"); }
+    finally { setLoading(false); }
   }
+  useEffect(() => { fetchProfileAndReports(); /* eslint-disable-next-line */ }, [token, base]);
+
+  async function pollReports(times = 3, delayMs = 1200) {
+    for (let i = 0; i < times; i++) { await new Promise(r=>setTimeout(r, delayMs)); await fetchProfileAndReports(); if (i<times-1) setGenStatus(`Updating list… (${i+1}/${times})`); }
+    setGenStatus("");
+  }
+
+  async function generateReport() {
+    if (!token || !profile) return;
+    setGenStatus("Generating…"); setErr(null);
+    try {
+      const payload: Record<string, unknown> = {}; if (profile.id) payload["business_id"] = profile.id;
+      const res = await fetch(`${base}/reports/generate-business-overview`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+      });
+      const text = await res.text(); let data: any = null; try { data = text ? JSON.parse(text) : null; } catch {}
+      if (!res.ok) throw new Error(data?.detail?.message || text || "Generate failed");
+      setGenStatus("Generated! Updating list…"); await pollReports(3, 1500);
+    } catch (e: any) { setGenStatus(""); setErr(e?.message || "Generate failed"); }
+  }
+
+  // derived UI values
+  const transparency = 72; // placeholder score
+  const growthStage = profile?.size ? String(profile.size) : "Seedling";
+  const growthEmoji = "🌱";
+
+  return (
+    <div style={S.page}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <h2 style={S.h2}>Dashboard</h2>
+        <span style={{ ...S.tag, marginLeft: "auto" }}>{email ? <>Signed in as <strong>{email}</strong></> : "Signed in"}</span>
+      </div>
+
+      {/* top stats */}
+      <div style={S.rowCols(4)}>
+        <div style={S.card}>
+          <div style={S.h3 as any}>Transparency Score</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <Donut percent={transparency}/>
+            <div>
+              <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{transparency}%</div>
+              <div style={S.sub}>Placeholder metric</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={S.card}>
+          <div style={S.h3 as any}>Growth Stage</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <div style={{ fontSize: 28 }}>{growthEmoji}</div>
+            <div style={{ fontWeight: 700 }}>{growthStage}</div>
+          </div>
+          <div style={{ ...S.sub, marginTop: 6 }}>Based on your profile</div>
+        </div>
+
+        <div style={S.card}>
+          <div style={S.h3 as any}>AI Credits</div>
+          <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>{100}</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button style={S.btnGhost} onClick={() => alert("Top-up coming soon")}>Top up</button>
+          </div>
+        </div>
+
+        <div style={S.card}>
+          <div style={S.h3 as any}>Create New Report</div>
+          <div style={S.sub}>Business Overview</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+            <button style={S.btn} onClick={generateReport}>Generate</button>
+            {genStatus && <span style={S.sub}>{genStatus}</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* recommendations */}
+      <div style={{ ...S.card, marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={S.h3 as any}>Recommendations</div>
+          <span style={S.tag}>🔔 AI-only</span>
+        </div>
+        <ul style={{ margin: 0, paddingLeft: 18, marginTop: 8 }}>
+          <li>Optimize your Google Business Profile description for seasonal keywords.</li>
+          <li>Add recent customer photos to increase engagement.</li>
+          <li>Publish a 30-sec Reels/TikTok about your top tour this week.</li>
+        </ul>
+      </div>
+
+      {/* recent reports */}
+      <div style={{ ...S.card, marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
+          <div style={S.h3 as any}>Recent Reports</div>
+          <span style={S.sub}>Latest 10</span>
+        </div>
+
+        {err && <div style={{ color: "crimson", marginBottom: 12 }}>{err}</div>}
+        {loading ? (
+          <div>Loading…</div>
+        ) : reports.length === 0 ? (
+          <div style={{ opacity: 0.7 }}>No reports yet.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={{ ...S.th, width: 160 }}>Date</th>
+                  <th style={{ ...S.th, width: 200 }}>Type</th>
+                  <th style={{ ...S.th }}>Files</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.slice(0, 10).map((r, i) => {
+                  const created = r.created_at ? new Date(r.created_at as string).toLocaleString() : "—";
+                  const id = (r.id as string) || `row-${i}`;
+                  // merge existing links + fallbacks
+                  const baseLinks = (r.links || []) as Link[];
+                  const out: Link[] = [];
+                  const seen = new Set<string>();
+                  const add = (label: string, url?: string) => { if (!url) return; const key = url.toLowerCase(); if (seen.has(key)) return; seen.add(key); out.push({ label, url }); };
+                  for (const l of baseLinks) add(l.label, l.url);
+                  const hasLabel = (lbl: string) => out.some(x => x.label.toLowerCase() === lbl.toLowerCase());
+                  if (r.id) {
+                    const base = (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com").replace(/\/$/, "");
+                    const token = localStorage.getItem("enrich_access");
+                    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+                    if (!hasLabel("JSON")) add("JSON", `${base}/reports/${r.id}/json${qs}`);
+                    if (!hasLabel("Canva CSV") && !hasLabel("CSV")) add("Canva CSV", `${base}/reports/${r.id}/csv${qs ? qs + "&variant=canva" : "?variant=canva"}`);
+                    if (!hasLabel("PDF")) add("PDF", `${base}/reports/${r.id}/pdf${qs}`);
+                  }
+
+                  return (
+                    <tr key={id}>
+                      <td style={S.td}>{created}</td>
+                      <td style={S.td}><span style={S.tag}>{r.report_type || "Report"}</span></td>
+                      <td style={S.td}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {out.map((l, idx) => (
+                            <a key={idx} href={l.url} style={S.linkBtn} target="_blank" rel="noreferrer">{l.label}</a>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
