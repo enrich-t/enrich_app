@@ -1,29 +1,26 @@
 ﻿"use client";
+// ENRICH DASHBOARD v2
 import { useEffect, useMemo, useState } from "react";
 
 type Link = { label: string; url: string };
 type Report = { id?: string; report_type?: string; created_at?: string; links?: Link[]; [k: string]: unknown };
 type Profile = { id?: string; user_id?: string; business_name?: string; size?: string | null; [k: string]: unknown };
 
-/* ---------- helpers: data shaping ---------- */
+/* ---------- helpers: shape reports ---------- */
 function normalizeReports(raw: any): Report[] {
   const arr = Array.isArray(raw) ? raw : raw?.reports ?? raw?.items ?? raw?.data ?? [];
   if (!Array.isArray(arr)) return [];
-
   const pickUrl = (x: any) => (typeof x === "string" && /^https?:\/\//i.test(x) ? x : undefined);
   const looksLikePdf = (url?: string, labelMaybe?: string) => {
     if (!url) return false;
     try {
-      const low = url.toLowerCase();
-      if (low.endsWith(".pdf")) return true;
+      const low = url.toLowerCase(); if (low.endsWith(".pdf")) return true;
       const u = new URL(url);
       const fn = u.searchParams.get("filename") || u.searchParams.get("download") || u.searchParams.get("name");
       if (fn && fn.toLowerCase().endsWith(".pdf")) return true;
     } catch {}
-    if (labelMaybe && /pdf/i.test(labelMaybe)) return true;
-    return false;
+    return !!(labelMaybe && /pdf/i.test(labelMaybe));
   };
-
   return arr.map((r: any) => {
     const id = r.id ?? r.report_id ?? r.uuid ?? r.pk ?? undefined;
     const created_at = r.created_at ?? r.createdAt ?? r.created ?? r.timestamp ?? undefined;
@@ -42,7 +39,6 @@ function normalizeReports(raw: any): Report[] {
           })()
         : undefined);
     const csvUrl = pickUrl(r.csv_url ?? r.csvUrl ?? r.csv);
-
     let pdfUrl = pickUrl(r.pdf_url ?? r.pdfUrl ?? r.pdf ?? r.report_pdf_url ?? r.summary_pdf_url ?? r.download_pdf);
     if (!looksLikePdf(pdfUrl)) pdfUrl = undefined;
     if (!pdfUrl && Array.isArray(r.files)) {
@@ -59,21 +55,17 @@ function normalizeReports(raw: any): Report[] {
         if (k.toLowerCase().includes("pdf") || looksLikePdf(u)) { pdfUrl = u; break; }
       }
     }
-
-    // links in strict order, dedup by URL
-    const out: Link[] = [];
-    const seen = new Set<string>();
+    const out: Link[] = []; const seen = new Set<string>();
     const add = (label: string, url?: string) => { if (!url) return; const key = url.toLowerCase(); if (seen.has(key)) return; seen.add(key); out.push({ label, url }); };
     add("JSON", jsonUrl);
     add("Canva CSV", canvaCsv);
-    if (!out.find(l => l.label === "Canva CSV")) add("CSV", csvUrl);
+    if (!out.find((l) => l.label === "Canva CSV")) add("CSV", csvUrl);
     add("PDF", pdfUrl);
-
     return { id, created_at, report_type, links: out, ...r };
   });
 }
 
-/* ---------- tiny UI kit (inline styles so no Tailwind issues) ---------- */
+/* ---------- tiny UI kit (no Tailwind) ---------- */
 const S = {
   page: { fontFamily: "Inter, ui-sans-serif, system-ui, Arial", maxWidth: 1100, margin: "24px auto", padding: "0 16px" },
   rowCols: (n: number) => ({ display: "grid", gap: 16, gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }),
@@ -92,9 +84,7 @@ const S = {
 
 /* ---------- donut placeholder ---------- */
 function Donut({ percent = 72, size = 90, stroke = 10, color = "#0ea5e9", track = "#e5e7eb" }: { percent?: number; size?: number; stroke?: number; color?: string; track?: string }) {
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const dash = Math.max(0, Math.min(100, percent)) / 100 * c;
+  const r = (size - stroke) / 2; const c = 2 * Math.PI * r; const dash = Math.max(0, Math.min(100, percent)) / 100 * c;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <circle cx={size/2} cy={size/2} r={r} stroke={track} strokeWidth={stroke} fill="none"/>
@@ -114,12 +104,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [genStatus, setGenStatus] = useState<string>("");
-  const [debugOpen, setDebugOpen] = useState(false);
-  const [debugLog, setDebugLog] = useState<string[]>([]);
   const [credits, setCredits] = useState<number>(() => {
     const v = Number(localStorage.getItem("enrich_credits") || "100"); return Number.isFinite(v) ? v : 100;
   });
-  const dlog = (s: string) => setDebugLog((p) => [...p, s]);
 
   useEffect(() => {
     try {
@@ -128,9 +115,7 @@ export default function DashboardPage() {
     } catch {}
   }, []);
 
-  const sameOrigin = (url: string) => {
-    try { const u = new URL(url); const b = new URL(base); return u.origin === b.origin; } catch { return false; }
-  };
+  const sameOrigin = (url: string) => { try { const u = new URL(url); const b = new URL(base); return u.origin === b.origin; } catch { return false; } };
 
   async function openAuthed(url: string, fallbackName?: string) {
     if (!sameOrigin(url) || !token) { window.open(url, "_blank", "noopener,noreferrer"); return; }
@@ -159,25 +144,22 @@ export default function DashboardPage() {
     ];
     for (const t of tries) {
       try {
-        dlog(`GET ${t.label} → ${t.url}`);
         const res = await fetch(t.url, { headers: { Authorization: `Bearer ${token}` } });
-        const text = await res.text(); dlog(`↳ ${res.status} ${res.ok ? "OK" : "ERR"} · ${text.slice(0, 140)}${text.length > 140 ? "…" : ""}`);
+        const text = await res.text();
         if (!res.ok) continue;
         const parsed = text ? JSON.parse(text) : {}; const list = normalizeReports(parsed);
         if (Array.isArray(list)) return list;
-      } catch (e: any) { dlog(`⚠ ${t.label} failed: ${e?.message || e}`); }
+      } catch {}
     }
     return [];
   }
 
   async function fetchProfileAndReports() {
     if (!token) return;
-    setLoading(true); setErr(null); setDebugLog([]);
+    setLoading(true); setErr(null);
     try {
-      dlog(`GET /auth/me`);
       const meRes = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-      const meText = await meRes.text(); dlog(`↳ ${meRes.status} ${meRes.ok ? "OK" : "ERR"} · ${meText.slice(0, 140)}${meText.length > 140 ? "…” : ""}`);
-      let me: any = {}; try { me = meText ? JSON.parse(meText) : {}; } catch {}
+      const meText = await meRes.text(); let me: any = {}; try { me = meText ? JSON.parse(meText) : {}; } catch {}
       if (!meRes.ok) throw new Error(me?.detail?.message || meText || "Failed to load profile");
       const p = (me?.profile || me?.data || me) as Profile; setProfile(p);
       const bizId = p?.id || p?.user_id; if (!bizId) throw new Error("No business/profile id on profile");
@@ -202,20 +184,23 @@ export default function DashboardPage() {
       });
       const text = await res.text(); let data: any = null; try { data = text ? JSON.parse(text) : null; } catch {}
       if (!res.ok) throw new Error(data?.detail?.message || text || "Generate failed");
+      // pretend to spend a credit
+      const n = Math.max(0, credits - 1); setCredits(n); localStorage.setItem("enrich_credits", String(n));
       setGenStatus("Generated! Updating list…"); await pollReports(3, 1500);
     } catch (e: any) { setGenStatus(""); setErr(e?.message || "Generate failed"); }
   }
 
   // derived UI values
-  const transparency = 72; // placeholder score
+  const transparency = 72; // placeholder
   const growthStage = profile?.size ? String(profile.size) : "Seedling";
   const growthEmoji = "🌱";
 
   return (
     <div style={S.page}>
+      {/* header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <h2 style={S.h2}>Dashboard</h2>
-        <span style={{ ...S.tag, marginLeft: "auto" }}>{email ? <>Signed in as <strong>{email}</strong></> : "Signed in"}</span>
+        <span style={{ ...S.tag, marginLeft: "auto" }}>v2 • {email ? <>Signed in as <strong>{email}</strong></> : "Signed in"}</span>
       </div>
 
       {/* top stats */}
@@ -242,9 +227,10 @@ export default function DashboardPage() {
 
         <div style={S.card}>
           <div style={S.h3 as any}>AI Credits</div>
-          <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>{100}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>{credits}</div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button style={S.btnGhost} onClick={() => alert("Top-up coming soon")}>Top up</button>
+            <button style={S.btnGhost} onClick={() => { const n = credits + 50; setCredits(n); localStorage.setItem("enrich_credits", String(n)); }}>+50</button>
+            <button style={S.btnGhost} onClick={() => { const n = 100; setCredits(n); localStorage.setItem("enrich_credits", String(n)); }}>Reset</button>
           </div>
         </div>
 
@@ -276,6 +262,7 @@ export default function DashboardPage() {
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
           <div style={S.h3 as any}>Recent Reports</div>
           <span style={S.sub}>Latest 10</span>
+          <button style={{ ...S.btnGhost, marginLeft: "auto" }} onClick={() => fetchProfileAndReports()}>Refresh</button>
         </div>
 
         {err && <div style={{ color: "crimson", marginBottom: 12 }}>{err}</div>}
@@ -299,29 +286,40 @@ export default function DashboardPage() {
                   const id = (r.id as string) || `row-${i}`;
                   // merge existing links + fallbacks
                   const baseLinks = (r.links || []) as Link[];
-                  const out: Link[] = [];
-                  const seen = new Set<string>();
+                  const out: Link[] = []; const seen = new Set<string>();
                   const add = (label: string, url?: string) => { if (!url) return; const key = url.toLowerCase(); if (seen.has(key)) return; seen.add(key); out.push({ label, url }); };
                   for (const l of baseLinks) add(l.label, l.url);
                   const hasLabel = (lbl: string) => out.some(x => x.label.toLowerCase() === lbl.toLowerCase());
                   if (r.id) {
-                    const base = (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com").replace(/\/$/, "");
-                    const token = localStorage.getItem("enrich_access");
-                    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-                    if (!hasLabel("JSON")) add("JSON", `${base}/reports/${r.id}/json${qs}`);
-                    if (!hasLabel("Canva CSV") && !hasLabel("CSV")) add("Canva CSV", `${base}/reports/${r.id}/csv${qs ? qs + "&variant=canva" : "?variant=canva"}`);
-                    if (!hasLabel("PDF")) add("PDF", `${base}/reports/${r.id}/pdf${qs}`);
+                    if (!hasLabel("JSON")) add("JSON", buildLink(`${base}/reports/${r.id}/json`));
+                    if (!hasLabel("Canva CSV") && !hasLabel("CSV")) add("Canva CSV", buildLink(`${base}/reports/${r.id}/csv`, { variant: "canva" }));
+                    if (!hasLabel("PDF")) add("PDF", buildLink(`${base}/reports/${r.id}/pdf`));
                   }
-
                   return (
                     <tr key={id}>
                       <td style={S.td}>{created}</td>
                       <td style={S.td}><span style={S.tag}>{r.report_type || "Report"}</span></td>
                       <td style={S.td}>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {out.map((l, idx) => (
-                            <a key={idx} href={l.url} style={S.linkBtn} target="_blank" rel="noreferrer">{l.label}</a>
-                          ))}
+                          {out.map((l, idx) => {
+                            const internal = sameOrigin(l.url);
+                            const fallbackName =
+                              l.label.toLowerCase().includes("csv") ? `report_${id}.csv` :
+                              l.label.toLowerCase().includes("json") ? `report_${id}.json` :
+                              `report_${id}.pdf`;
+                            return (
+                              <a
+                                key={idx}
+                                href={l.url}
+                                style={S.linkBtn}
+                                onClick={(e) => { if (internal) { e.preventDefault(); openAuthed(l.url, fallbackName); } }}
+                                target={internal ? undefined : "_blank"}
+                                rel={internal ? undefined : "noreferrer"}
+                              >
+                                {l.label}
+                              </a>
+                            );
+                          })}
                         </div>
                       </td>
                     </tr>
