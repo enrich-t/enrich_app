@@ -17,12 +17,9 @@ function normalizeReports(raw: any): Report[] {
       const low = url.toLowerCase();
       if (low.endsWith(".pdf")) return true;
       const u = new URL(url);
-      const filename =
-        u.searchParams.get("filename") ||
-        u.searchParams.get("download") ||
-        u.searchParams.get("name");
+      const filename = u.searchParams.get("filename") || u.searchParams.get("download") || u.searchParams.get("name");
       if (filename && filename.toLowerCase().endsWith(".pdf")) return true;
-    } catch { /* ignore */ }
+    } catch {}
     if (labelMaybe && /pdf/i.test(labelMaybe)) return true;
     return false;
   };
@@ -34,8 +31,6 @@ function normalizeReports(raw: any): Report[] {
 
     // Preferred URLs (exact fields first)
     const jsonUrl  = pickUrl(r.json_url  ?? r.jsonUrl  ?? r.json);
-
-    // Canva CSV preferred (field or files[] with label including "canva")
     const canvaCsv =
       pickUrl(r.canva_csv_url ?? r.canvaCsvUrl ?? r.canva_csv) ||
       (Array.isArray(r.files)
@@ -48,14 +43,10 @@ function normalizeReports(raw: any): Report[] {
             return f ? pickUrl(f.url ?? f.public_url ?? f.signed_url) : undefined;
           })()
         : undefined);
-
     const csvUrl   = pickUrl(r.csv_url   ?? r.csvUrl   ?? r.csv);
 
-    // PDF: many APIs hide PDF under odd keys or signed URLs; be generous
     let pdfUrl = pickUrl(r.pdf_url ?? r.pdfUrl ?? r.pdf ?? r.report_pdf_url ?? r.summary_pdf_url ?? r.download_pdf);
     if (!looksLikePdf(pdfUrl)) pdfUrl = undefined;
-
-    // Scan files[] for a PDF-like link or label
     if (!pdfUrl && Array.isArray(r.files)) {
       for (const f of r.files) {
         const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
@@ -63,8 +54,6 @@ function normalizeReports(raw: any): Report[] {
         if (looksLikePdf(u, label)) { pdfUrl = u; break; }
       }
     }
-
-    // As a last resort, scan all string props: if key contains "pdf" or url looks like PDF, take it
     if (!pdfUrl) {
       for (const [k, v] of Object.entries(r)) {
         if (typeof v !== "string") continue;
@@ -231,19 +220,41 @@ export default function DashboardPage() {
           <ul style={{listStyle: "none", padding: 0, display: "grid", gap: 8}}>
             {reports.map((r, i) => {
               const created = r.created_at ? new Date(r.created_at as string).toLocaleString() : null;
-              const links = (r.links || []) as Link[];
+              const baseLinks = (r.links || []) as Link[];
+
+              // Add fallbacks based on id if missing
+              const out: Link[] = [];
+              const seen = new Set<string>();
+              const add = (label: string, url?: string) => {
+                if (!url) return;
+                const key = url.toLowerCase();
+                if (seen.has(key)) return;
+                seen.add(key);
+                out.push({ label, url });
+              };
+
+              for (const l of baseLinks) add(l.label, l.url);
+
+              const hasLabel = (lbl: string) => out.some(x => x.label.toLowerCase() === lbl.toLowerCase());
+              const id = (r.id as string) || "";
+              if (id) {
+                if (!hasLabel("JSON")) add("JSON", `${base}/reports/${id}/json`);
+                if (!hasLabel("Canva CSV") && !hasLabel("CSV")) add("Canva CSV", `${base}/reports/${id}/csv?variant=canva`);
+                if (!hasLabel("PDF")) add("PDF", `${base}/reports/${id}/pdf`);
+              }
+
               return (
-                <li key={(r.id as string) || i} style={{border: "1px solid #eee", borderRadius: 8, padding: 12}}>
+                <li key={id || i} style={{border: "1px solid #eee", borderRadius: 8, padding: 12}}>
                   <div style={{display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap"}}>
                     <div>
                       <div style={{fontWeight: 600}}>{r.report_type || "Report"}</div>
                       {created && <div style={{fontSize: 12, opacity: 0.7}}>{created}</div>}
                     </div>
                     <div style={{display: "flex", gap: 8, alignItems: "center"}}>
-                      {links.map((l, idx) => (
+                      {out.map((l, idx) => (
                         <a key={idx} href={l.url} target="_blank" rel="noreferrer">{l.label}</a>
                       ))}
-                      {links.length === 0 && <span style={{fontSize: 12, opacity: 0.6}}>No files yet</span>}
+                      {out.length === 0 && <span style={{fontSize: 12, opacity: 0.6}}>No files yet</span>}
                     </div>
                   </div>
                 </li>
