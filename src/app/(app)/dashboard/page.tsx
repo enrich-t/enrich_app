@@ -8,34 +8,68 @@ type Profile = { id?: string; user_id?: string; business_name?: string; [k: stri
 function normalizeReports(raw: any): Report[] {
   const arr = Array.isArray(raw) ? raw : raw?.reports ?? raw?.items ?? raw?.data ?? [];
   if (!Array.isArray(arr)) return [];
-  const pickUrl = (x: any) => (typeof x === "string" && /^https?:\/\//.test(x) ? x : undefined);
+  const pickUrl = (x: any) => (typeof x === "string" && /^https?:\/\//i.test(x) ? x : undefined);
   return arr.map((r: any) => {
     const id = r.id ?? r.report_id ?? r.uuid ?? r.pk ?? undefined;
     const created_at = r.created_at ?? r.createdAt ?? r.created ?? r.timestamp ?? undefined;
     const report_type = r.report_type ?? r.type ?? r.kind ?? "Report";
-    const links: Link[] = [];
-    const add = (label: string, url?: string) => url && links.push({ label, url });
-    add("CSV", pickUrl(r.csv_url ?? r.csvUrl ?? r.csv));
-    add("PDF", pickUrl(r.pdf_url ?? r.pdfUrl ?? r.pdf));
-    add("JSON", pickUrl(r.json_url ?? r.jsonUrl ?? r.json));
+
+    // Preferred URLs (exact fields first)
+    const jsonUrl  = pickUrl(r.json_url  ?? r.jsonUrl  ?? r.json);
+    const canvaCsv = pickUrl(
+      r.canva_csv_url ?? r.canvaCsvUrl ?? r.canva_csv ??
+      // look in files[] for anything that looks like a Canva CSV
+      (Array.isArray(r.files) ? (r.files.find((f: any) => {
+        const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
+        const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString().toLowerCase();
+        return u && u.toLowerCase().endsWith(".csv") && label.includes("canva");
+      }) || {}).url : undefined)
+    );
+    const csvUrl   = pickUrl(r.csv_url   ?? r.csvUrl   ?? r.csv);
+    const pdfUrl   = pickUrl(r.pdf_url   ?? r.pdfUrl   ?? r.pdf);
+
+    // Also scan files[] for json/csv/pdf if fields were missing
+    const urls = new Set<string>([
+      ...(jsonUrl  ? [jsonUrl]  : []),
+      ...(canvaCsv ? [canvaCsv] : []),
+      ...(csvUrl   ? [csvUrl]   : []),
+      ...(pdfUrl   ? [pdfUrl]   : []),
+    ]);
     if (Array.isArray(r.files)) {
       for (const f of r.files) {
-        const url = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
-        const label = (f?.label ?? f?.type ?? f?.kind ?? f?.format ?? f?.filename ?? "File").toString().toUpperCase();
-        if (url) links.push({ label, url });
+        const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
+        if (!u) continue;
+        const low = u.toLowerCase();
+        if ((low.endsWith(".json") || low.endsWith(".csv") || low.endsWith(".pdf")) && !urls.has(u)) {
+          urls.add(u);
+          if (low.endsWith(".json") && !jsonUrl) { (r as any).__json = u; }
+          else if (low.endsWith(".csv") && !csvUrl && !canvaCsv) {
+            const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString().toLowerCase();
+            if (label.includes("canva")) (r as any).__canva = u; else (r as any).__csv = u;
+          }
+          else if (low.endsWith(".pdf") && !pdfUrl) { (r as any).__pdf = u; }
+        }
       }
     }
-    // catch any other direct url fields
-    for (const k of Object.keys(r)) {
-      const v = r[k];
-      if (typeof v === "string" && /^https?:\/\//.test(v)) {
-        const u = v.toLowerCase();
-        if (u.endsWith(".csv")) add("CSV", v);
-        else if (u.endsWith(".pdf")) add("PDF", v);
-        else if (u.endsWith(".json")) add("JSON", v);
-      }
-    }
-    return { id, created_at, report_type, links, ...r };
+
+    // Build links in strict order, deduping by URL
+    const out: Link[] = [];
+    const seen = new Set<string>();
+    const add = (label: string, url?: string) => {
+      if (!url) return;
+      const key = url.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ label, url });
+    };
+
+    add("JSON", jsonUrl || (r as any).__json);
+    // Prefer Canva CSV; if absent, use plain CSV
+    add("Canva CSV", canvaCsv || (r as any).__canva);
+    if (!out.find(l => l.label === "Canva CSV")) add("CSV", csvUrl || (r as any).__csv);
+    add("PDF", pdfUrl || (r as any).__pdf);
+
+    return { id, created_at, report_type, links: out, ...r };
   });
 }
 
@@ -64,14 +98,10 @@ export default function DashboardPage() {
     } catch {}
   }, []);
 
-  async function tryFetchList(bizId: string, userId: string | undefined) {
+  async function tryFetchList(bizId: string) {
     const tries: { label: string; url: string }[] = [
       { label: "list/{bizId}", url: `${base}/reports/list/${bizId}` },
-      ...(userId ? [{ label: "list?user_id=", url: `${base}/reports/list?user_id=${encodeURIComponent(userId)}` }] : []),
-      { label: "reports?business_id=", url: `${base}/reports?business_id=${encodeURIComponent(bizId)}` },
-      ...(userId ? [{ label: "reports?user_id=", url: `${base}/reports?user_id=${encodeURIComponent(userId)}` }] : []),
-      { label: "list (no params)", url: `${base}/reports/list` },
-      { label: "reports (no params)", url: `${base}/reports` },
+      { label: "list?business_id=", url: `${base}/reports/list?business_id=${encodeURIComponent(bizId)}` },
     ];
     for (const t of tries) {
       try {
@@ -82,10 +112,7 @@ export default function DashboardPage() {
         if (!res.ok) continue;
         const parsed = text ? JSON.parse(text) : {};
         const list = normalizeReports(parsed);
-        if (Array.isArray(list) && list.length > 0) {
-          dlog(`✔ picked: ${t.label} (${list.length} items)`);
-          return list;
-        }
+        if (Array.isArray(list)) return list;
       } catch (e: any) {
         dlog(`⚠ ${t.label} failed: ${e?.message || e}`);
       }
@@ -99,7 +126,6 @@ export default function DashboardPage() {
     setErr(null);
     setDebugLog([]);
     try {
-      // 1) /auth/me
       dlog(`GET /auth/me`);
       const meRes = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
       const meText = await meRes.text();
@@ -109,13 +135,10 @@ export default function DashboardPage() {
       if (!meRes.ok) throw new Error(me?.detail?.message || meText || "Failed to load profile");
       const p = (me?.profile || me?.data || me) as Profile;
       setProfile(p);
-
       const bizId = p?.id || p?.user_id;
-      const userId = p?.user_id;
       if (!bizId) throw new Error("No business/profile id on profile");
 
-      // 2) list with multiple strategies
-      const list = await tryFetchList(String(bizId), userId ? String(userId) : undefined);
+      const list = await tryFetchList(String(bizId));
       setReports(list);
     } catch (e: any) {
       setErr(e?.message || "Failed to load dashboard");
@@ -142,21 +165,12 @@ export default function DashboardPage() {
     try {
       const payload: Record<string, unknown> = {};
       if (profile.id) payload["business_id"] = profile.id;
-      if (!profile.id && profile.user_id) payload["user_id"] = profile.user_id;
 
       let res = await fetch(`${base}/reports/generate-business-overview`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-
-      if (!res.ok && profile.user_id && !payload["user_id"]) {
-        res = await fetch(`${base}/reports/generate-business-overview`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ user_id: profile.user_id }),
-        });
-      }
 
       const text = await res.text();
       let data: any = null;
@@ -205,13 +219,10 @@ export default function DashboardPage() {
                       {created && <div style={{fontSize: 12, opacity: 0.7}}>{created}</div>}
                     </div>
                     <div style={{display: "flex", gap: 8, alignItems: "center"}}>
-                      {links.length > 0 ? (
-                        links.map((l, idx) => (
-                          <a key={idx} href={l.url} target="_blank" rel="noreferrer">{l.label}</a>
-                        ))
-                      ) : (
-                        <span style={{fontSize: 12, opacity: 0.6}}>No files yet</span>
-                      )}
+                      {links.map((l, idx) => (
+                        <a key={idx} href={l.url} target="_blank" rel="noreferrer">{l.label}</a>
+                      ))}
+                      {links.length === 0 && <span style={{fontSize: 12, opacity: 0.6}}>No files yet</span>}
                     </div>
                   </div>
                 </li>
@@ -225,9 +236,6 @@ export default function DashboardPage() {
         <div style={{marginTop: 16, padding: 12, background: "#fafafa", border: "1px dashed #ddd", borderRadius: 8}}>
           <div style={{fontWeight: 600, marginBottom: 6}}>Debug log</div>
           <pre style={{whiteSpace: "pre-wrap"}}>{debugLog.join("\n") || "(empty)"}</pre>
-          <div style={{fontSize: 12, opacity: 0.7, marginTop: 6}}>
-            bizId: {profile?.id || "(none)"} | userId: {profile?.user_id || "(none)"} | base: {base}
-          </div>
         </div>
       )}
     </div>
