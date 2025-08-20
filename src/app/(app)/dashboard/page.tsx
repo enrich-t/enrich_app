@@ -1,8 +1,14 @@
-﻿"use client";
+"use client";
 import { useEffect, useMemo, useState } from "react";
 
 type Link = { label: string; url: string };
-type Report = { id?: string; report_type?: string; created_at?: string; links?: Link[]; [k: string]: unknown };
+type Report = {
+  id?: string;
+  report_type?: string;
+  created_at?: string;
+  links?: Link[];
+  [k: string]: unknown;
+};
 type Profile = { id?: string; user_id?: string; business_name?: string; [k: string]: unknown };
 
 function normalizeReports(raw: any): Report[] {
@@ -17,7 +23,10 @@ function normalizeReports(raw: any): Report[] {
       const low = url.toLowerCase();
       if (low.endsWith(".pdf")) return true;
       const u = new URL(url);
-      const filename = u.searchParams.get("filename") || u.searchParams.get("download") || u.searchParams.get("name");
+      const filename =
+        u.searchParams.get("filename") ||
+        u.searchParams.get("download") ||
+        u.searchParams.get("name");
       if (filename && filename.toLowerCase().endsWith(".pdf")) return true;
     } catch {}
     if (labelMaybe && /pdf/i.test(labelMaybe)) return true;
@@ -30,7 +39,9 @@ function normalizeReports(raw: any): Report[] {
     const report_type = r.report_type ?? r.type ?? r.kind ?? "Report";
 
     // Preferred URLs (exact fields first)
-    const jsonUrl  = pickUrl(r.json_url  ?? r.jsonUrl  ?? r.json);
+    const jsonUrl = pickUrl(r.json_url ?? r.jsonUrl ?? r.json);
+
+    // Prefer Canva CSV; otherwise plain CSV
     const canvaCsv =
       pickUrl(r.canva_csv_url ?? r.canvaCsvUrl ?? r.canva_csv) ||
       (Array.isArray(r.files)
@@ -43,47 +54,54 @@ function normalizeReports(raw: any): Report[] {
             return f ? pickUrl(f.url ?? f.public_url ?? f.signed_url) : undefined;
           })()
         : undefined);
-    const csvUrl   = pickUrl(r.csv_url   ?? r.csvUrl   ?? r.csv);
 
+    const csvUrl = pickUrl(r.csv_url ?? r.csvUrl ?? r.csv);
+
+    // PDF: signed URLs or different keys
     let pdfUrl = pickUrl(r.pdf_url ?? r.pdfUrl ?? r.pdf ?? r.report_pdf_url ?? r.summary_pdf_url ?? r.download_pdf);
     if (!looksLikePdf(pdfUrl)) pdfUrl = undefined;
+
     if (!pdfUrl && Array.isArray(r.files)) {
       for (const f of r.files) {
         const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
         const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString();
-        if (looksLikePdf(u, label)) { pdfUrl = u; break; }
+        if (looksLikePdf(u, label)) {
+          pdfUrl = u;
+          break;
+        }
       }
     }
+
     if (!pdfUrl) {
       for (const [k, v] of Object.entries(r)) {
         if (typeof v !== "string") continue;
         const u = pickUrl(v);
         if (!u) continue;
-        if (k.toLowerCase().includes("pdf") || looksLikePdf(u)) { pdfUrl = u; break; }
+        if (k.toLowerCase().includes("pdf") || looksLikePdf(u)) {
+          pdfUrl = u;
+          break;
+        }
       }
     }
 
     // Build links in strict order, deduping by URL
-    const baseLinks = (r.links || []) as Link[];
-const out: Link[] = [];
-const seen = new Set<string>();
-const add = (label: string, url?: string) => {
-  if (!url) return;
-  const key = url.toLowerCase();
-  if (seen.has(key)) return;
-  seen.add(key);
-  out.push({ label, url });
-};
-for (const l of baseLinks) add(l.label, l.url);
+    const out: Link[] = [];
+    const seen = new Set<string>();
+    const add = (label: string, url?: string) => {
+      if (!url) return;
+      const key = url.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ label, url });
+    };
 
-// Add fallbacks using id + token in query so clicks are authenticated
-const hasLabel = (lbl: string) => out.some(x => x.label.toLowerCase() === lbl.toLowerCase());
-const id = (r.id as string) || "";
-const tok = token ? `?token=${encodeURIComponent(token)}` : "";
-if (id) {
-  if (!hasLabel("JSON")) add("JSON", `${base}/reports/${id}/json${tok}`);
-  if (!hasLabel("Canva CSV") && !hasLabel("CSV")) add("Canva CSV", `${base}/reports/${id}/csv${tok ? tok + "&variant=canva" : "?variant=canva"}`);
-  if (!hasLabel("PDF")) add("PDF", `${base}/reports/${id}/pdf${tok}`);
+    add("JSON", jsonUrl);
+    add("Canva CSV", canvaCsv);
+    if (!out.find((l) => l.label === "Canva CSV")) add("CSV", csvUrl);
+    add("PDF", pdfUrl);
+
+    return { id, created_at, report_type, links: out, ...r };
+  });
 }
 
 export default function DashboardPage() {
@@ -110,6 +128,67 @@ export default function DashboardPage() {
       setEmail(u ? (JSON.parse(u).email as string) : null);
     } catch {}
   }, []);
+
+  const sameOrigin = (url: string) => {
+    try {
+      const u = new URL(url);
+      const b = new URL(base);
+      return u.origin === b.origin;
+    } catch {
+      return false;
+    }
+  };
+
+  async function openAuthed(url: string, fallbackName?: string) {
+    // If not our API, just open in a new tab
+    if (!sameOrigin(url) || !token) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || res.statusText);
+      }
+      const blob = await res.blob();
+
+      // Try to extract filename from Content-Disposition
+      let filename = fallbackName || "download";
+      const cd = res.headers.get("content-disposition");
+      if (cd) {
+        const m = /filename\*?=(?:UTF-8''|")?([^";\n]+)/i.exec(cd);
+        if (m && m[1]) filename = decodeURIComponent(m[1].replace(/"/g, ""));
+      } else {
+        try {
+          const u = new URL(url);
+          filename = u.searchParams.get("filename") || filename;
+        } catch {}
+      }
+
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e: any) {
+      alert(`Download failed: ${e?.message || e}`);
+    }
+  }
+
+  const buildLink = (path: string, extra?: Record<string, string>): string => {
+    // We still add ?token= so direct open also works, but on click we use fetch+header.
+    const u = new URL(path, "http://example");
+    const params = new URLSearchParams(u.search);
+    if (token) params.set("token", token);
+    if (extra) for (const [k, v] of Object.entries(extra)) if (v) params.set(k, v);
+    const qs = params.toString();
+    const clean = path.split("?")[0];
+    return qs ? `${clean}?${qs}` : clean;
+  };
 
   async function tryFetchList(bizId: string) {
     const tries: { label: string; url: string }[] = [
@@ -144,7 +223,9 @@ export default function DashboardPage() {
       const meText = await meRes.text();
       dlog(`↳ ${meRes.status} ${meRes.ok ? "OK" : "ERR"} · ${meText.slice(0, 140)}${meText.length > 140 ? "…" : ""}`);
       let me: any = {};
-      try { me = meText ? JSON.parse(meText) : {}; } catch {}
+      try {
+        me = meText ? JSON.parse(meText) : {};
+      } catch {}
       if (!meRes.ok) throw new Error(me?.detail?.message || meText || "Failed to load profile");
       const p = (me?.profile || me?.data || me) as Profile;
       setProfile(p);
@@ -160,11 +241,14 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => { fetchProfileAndReports(); /* eslint-disable-next-line */ }, [token, base]);
+  useEffect(() => {
+    fetchProfileAndReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, base]);
 
   async function pollReports(times = 3, delayMs = 1200) {
     for (let i = 0; i < times; i++) {
-      await new Promise(r => setTimeout(r, delayMs));
+      await new Promise((r) => setTimeout(r, delayMs));
       await fetchProfileAndReports();
       if (i < times - 1) setGenStatus(`Updating list… (${i + 1}/${times})`);
     }
@@ -179,7 +263,7 @@ export default function DashboardPage() {
       const payload: Record<string, unknown> = {};
       if (profile.id) payload["business_id"] = profile.id;
 
-      let res = await fetch(`${base}/reports/generate-business-overview`, {
+      const res = await fetch(`${base}/reports/generate-business-overview`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
@@ -187,7 +271,9 @@ export default function DashboardPage() {
 
       const text = await res.text();
       let data: any = null;
-      try { data = text ? JSON.parse(text) : null; } catch {}
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {}
       if (!res.ok) throw new Error(data?.detail?.message || text || "Generate failed");
 
       setGenStatus("Generated! Updating list…");
@@ -200,32 +286,38 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h2 style={{marginBottom: 8}}>Dashboard</h2>
-      <div style={{marginBottom: 16, opacity: 0.8, fontSize: 14}}>
-        {email ? <>Signed in as <strong>{email}</strong></> : "Signed in"}
+      <h2 style={{ marginBottom: 8 }}>Dashboard</h2>
+      <div style={{ marginBottom: 16, opacity: 0.8, fontSize: 14 }}>
+        {email ? (
+          <>
+            Signed in as <strong>{email}</strong>
+          </>
+        ) : (
+          "Signed in"
+        )}
       </div>
 
-      <div style={{display: "flex", gap: 12, alignItems: "center", marginBottom: 16}}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
         <button onClick={generateReport}>Generate Business Overview</button>
         <button onClick={fetchProfileAndReports}>Refresh</button>
         <button onClick={() => setDebugOpen((v) => !v)}>{debugOpen ? "Hide" : "Show"} debug</button>
-        {genStatus && <span style={{fontSize: 12, opacity: 0.7}}>{genStatus}</span>}
+        {genStatus && <span style={{ fontSize: 12, opacity: 0.7 }}>{genStatus}</span>}
       </div>
 
       {err && <div style={{ color: "crimson", marginBottom: 12 }}>{err}</div>}
       {loading && <div>Loading…</div>}
 
-      <h3 style={{marginTop: 12}}>Your Reports</h3>
-      <div style={{marginTop: 8}}>
+      <h3 style={{ marginTop: 12 }}>Your Reports</h3>
+      <div style={{ marginTop: 8 }}>
         {reports.length === 0 ? (
-          <div style={{opacity: 0.7}}>No reports yet.</div>
+          <div style={{ opacity: 0.7 }}>No reports yet.</div>
         ) : (
-          <ul style={{listStyle: "none", padding: 0, display: "grid", gap: 8}}>
+          <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 8 }}>
             {reports.map((r, i) => {
               const created = r.created_at ? new Date(r.created_at as string).toLocaleString() : null;
               const baseLinks = (r.links || []) as Link[];
 
-              // Add fallbacks based on id if missing
+              // Combine existing links + fallbacks using /reports/{id}/… with ?token=
               const out: Link[] = [];
               const seen = new Set<string>();
               const add = (label: string, url?: string) => {
@@ -235,29 +327,53 @@ export default function DashboardPage() {
                 seen.add(key);
                 out.push({ label, url });
               };
-
               for (const l of baseLinks) add(l.label, l.url);
 
-              const hasLabel = (lbl: string) => out.some(x => x.label.toLowerCase() === lbl.toLowerCase());
+              const hasLabel = (lbl: string) =>
+                out.some((x) => x.label.toLowerCase() === lbl.toLowerCase());
               const id = (r.id as string) || "";
               if (id) {
-                if (!hasLabel("JSON")) add("JSON", `${base}/reports/${id}/json`);
-                if (!hasLabel("Canva CSV") && !hasLabel("CSV")) add("Canva CSV", `${base}/reports/${id}/csv?variant=canva`);
-                if (!hasLabel("PDF")) add("PDF", `${base}/reports/${id}/pdf`);
+                if (!hasLabel("JSON")) add("JSON", buildLink(`${base}/reports/${id}/json`));
+                if (!hasLabel("Canva CSV") && !hasLabel("CSV"))
+                  add("Canva CSV", buildLink(`${base}/reports/${id}/csv`, { variant: "canva" }));
+                if (!hasLabel("PDF")) add("PDF", buildLink(`${base}/reports/${id}/pdf`));
               }
 
               return (
-                <li key={id || i} style={{border: "1px solid #eee", borderRadius: 8, padding: 12}}>
-                  <div style={{display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap"}}>
+                <li key={id || i} style={{ border: "1px solid #eee", borderRadius: 8, padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                     <div>
-                      <div style={{fontWeight: 600}}>{r.report_type || "Report"}</div>
-                      {created && <div style={{fontSize: 12, opacity: 0.7}}>{created}</div>}
+                      <div style={{ fontWeight: 600 }}>{r.report_type || "Report"}</div>
+                      {created && <div style={{ fontSize: 12, opacity: 0.7 }}>{created}</div>}
                     </div>
-                    <div style={{display: "flex", gap: 8, alignItems: "center"}}>
-                      {out.map((l, idx) => (
-                        <a key={idx} href={l.url} target="_blank" rel="noreferrer">{l.label}</a>
-                      ))}
-                      {out.length === 0 && <span style={{fontSize: 12, opacity: 0.6}}>No files yet</span>}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      {out.map((l, idx) => {
+                        const internal = sameOrigin(l.url);
+                        return (
+                          <a
+                            key={idx}
+                            href={l.url}
+                            target={internal ? undefined : "_blank"}
+                            rel={internal ? undefined : "noreferrer"}
+                            onClick={(e) => {
+                              if (internal) {
+                                e.preventDefault();
+                                // Stream via fetch + Authorization header
+                                const fallbackName =
+                                  l.label.toLowerCase().includes("csv")
+                                    ? `report_${id}.csv`
+                                    : l.label.toLowerCase().includes("json")
+                                    ? `report_${id}.json`
+                                    : `report_${id}.pdf`;
+                                openAuthed(l.url, fallbackName);
+                              }
+                            }}
+                          >
+                            {l.label}
+                          </a>
+                        );
+                      })}
+                      {out.length === 0 && <span style={{ fontSize: 12, opacity: 0.6 }}>No files yet</span>}
                     </div>
                   </div>
                 </li>
@@ -268,9 +384,17 @@ export default function DashboardPage() {
       </div>
 
       {debugOpen && (
-        <div style={{marginTop: 16, padding: 12, background: "#fafafa", border: "1px dashed #ddd", borderRadius: 8}}>
-          <div style={{fontWeight: 600, marginBottom: 6}}>Debug log</div>
-          <pre style={{whiteSpace: "pre-wrap"}}>{debugLog.join("\n") || "(empty)"}</pre>
+        <div
+          style={{
+            marginTop: 16,
+            padding: 12,
+            background: "#fafafa",
+            border: "1px dashed #ddd",
+            borderRadius: 8,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Debug log</div>
+          <pre style={{ whiteSpace: "pre-wrap" }}>{debugLog.join("\n") || "(empty)"}</pre>
         </div>
       )}
     </div>
