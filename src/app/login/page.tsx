@@ -1,43 +1,22 @@
 ﻿"use client";
-import { useState } from "react";
-
-type Candidate = { source: string; token: string };
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const base = (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com").replace(/\/$/, "");
+  const router = useRouter();
+  const base = useMemo(
+    () => (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com").replace(/\/$/, ""),
+    []
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [status, setStatus] = useState("(idle)");
-  const [raw, setRaw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  function collectCandidates(data: any): Candidate[] {
-    const c: Candidate[] = [];
-    const add = (source: string, v: any) => {
-      if (typeof v === "string" && v.length > 0) c.push({ source, token: v });
-    };
-    add("supabase_access_token", data?.supabase_access_token);
-    add("access_token", data?.access_token);
-    add("token", data?.token);
-    add("session.access_token", data?.session?.access_token);
-    add("raw.session.access_token", data?.raw?.session?.access_token);
-    add("data.session.access_token", data?.data?.session?.access_token);
-    // prefer JWT-looking tokens first
-    c.sort((a, b) => (b.token.split(".").length - a.token.split(".").length));
-    return c;
-  }
-
-  async function verifyToken(token: string): Promise<boolean> {
-    try {
-      const r = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-      return r.ok;
-    } catch {
-      return false;
-    }
-  }
-
-  async function onLogin() {
-    setStatus("REQUESTING…");
-    setRaw("");
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
     try {
       const res = await fetch(`${base}/auth/login`, {
         method: "POST",
@@ -45,52 +24,91 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       const text = await res.text();
-      setRaw(text || "(no body)");
-
       let data: any = null;
       try { data = text ? JSON.parse(text) : null; } catch {}
 
       if (!res.ok) {
-        const msg = data?.detail?.message || data?.message || text || "Login failed";
-        throw new Error(msg);
+        throw new Error(
+          data?.detail?.message || data?.message || text || "Login failed"
+        );
       }
 
-      const candidates = collectCandidates(data || {});
-      if (candidates.length === 0) throw new Error("No token returned from /auth/login");
+      const token =
+        data?.access_token ||
+        data?.token ||
+        data?.jwt ||
+        data?.session?.access_token ||
+        data?.data?.access_token;
 
-      setStatus(`Trying ${candidates.length} token candidate(s)…`);
-      let picked: Candidate | null = null;
-      for (const cand of candidates) {
-        const ok = await verifyToken(cand.token);
-        if (ok) { picked = cand; break; }
-      }
-      if (!picked) throw new Error("Could not verify token with /auth/me");
+      if (!token) throw new Error("No access token in response");
 
-      // store verified token + user
-      localStorage.setItem("enrich_access", picked.token);
-      localStorage.setItem("enrich_user", JSON.stringify({ email }));
+      const user = data?.user || data?.profile || { email, user_id: data?.user_id };
 
-      setStatus(`OK (stored: ${picked.source}). Redirecting…`);
-      // hard redirect so any guards pick up auth
-      window.location.href = "/dashboard";
+      // Save exactly what the dashboard expects:
+      localStorage.setItem("enrich_access", token);
+      localStorage.setItem(
+        "enrich_user",
+        JSON.stringify({
+          email: user?.email || email,
+          user_id: user?.id || user?.user_id || data?.user_id,
+        })
+      );
+
+      // Navigate to dashboard (soft + hard fallback)
+      try { router.replace("/dashboard"); } catch {}
+      setTimeout(() => { if (window.location.pathname !== "/dashboard") window.location.href = "/dashboard"; }, 150);
     } catch (e: any) {
-      setStatus(`ERROR: ${e?.message || String(e)}`);
+      setErr(e?.message || "Login failed");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 520, margin: "60px auto", fontFamily: "Inter, system-ui, Arial" }}>
-      <h2>Log in</h2>
-      <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
-        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} type="email" required />
-        <input placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} type="password" required />
-        <button type="button" onClick={onLogin}>Log in</button>
-      </div>
-
-      <div style={{marginTop:24, padding:12, background:"#f6f6f6", borderRadius:8}}>
-        <div style={{fontSize:12, opacity:0.8}}>API base: {base}</div>
-        <div style={{fontSize:12, opacity:0.8}}>Status: {status}</div>
-        <pre style={{whiteSpace:"pre-wrap"}}>{raw}</pre>
+    <div style={{ fontFamily: "Inter, system-ui, Arial", maxWidth: 420, margin: "48px auto", padding: "0 16px" }}>
+      <h2 style={{ marginBottom: 12 }}>Log in</h2>
+      <div style={{ marginBottom: 8, fontSize: 12, opacity: 0.6 }}>API base: {base}</div>
+      <form onSubmit={onSubmit} style={{ display: "grid", gap: 10 }}>
+        <label style={{ display: "grid", gap: 6 }}>
+          <span>Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+          />
+        </label>
+        <label style={{ display: "grid", gap: 6 }}>
+          <span>Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={busy}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid #0f172a",
+            background: "#0f172a",
+            color: "#fff",
+            fontWeight: 700,
+            cursor: "pointer",
+            opacity: busy ? 0.7 : 1,
+          }}
+        >
+          {busy ? "Signing in…" : "Sign in"}
+        </button>
+        {err && <div style={{ color: "crimson" }}>{err}</div>}
+      </form>
+      <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
+        After success, we save <code>enrich_access</code> and <code>enrich_user</code> to <code>localStorage</code> and go to <code>/dashboard</code>.
       </div>
     </div>
   );
