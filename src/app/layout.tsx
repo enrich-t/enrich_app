@@ -1,17 +1,11 @@
-import "./globals.css";
-import type { Metadata } from "next";
-
-export const metadata: Metadata = {
-  title: "Enrich",
-  description: "Responsible operations toolkit",
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+﻿export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="en">
-      <body className="min-h-screen">
-        {children}
-      </body>
+      <body style={{ margin: 0, background: "#fff" }}>{children}</body>
     </html>
   );
 }
