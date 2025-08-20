@@ -64,23 +64,26 @@ function normalizeReports(raw: any): Report[] {
     }
 
     // Build links in strict order, deduping by URL
-    const out: Link[] = [];
-    const seen = new Set<string>();
-    const add = (label: string, url?: string) => {
-      if (!url) return;
-      const key = url.toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push({ label, url });
-    };
+    const baseLinks = (r.links || []) as Link[];
+const out: Link[] = [];
+const seen = new Set<string>();
+const add = (label: string, url?: string) => {
+  if (!url) return;
+  const key = url.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push({ label, url });
+};
+for (const l of baseLinks) add(l.label, l.url);
 
-    add("JSON", jsonUrl);
-    add("Canva CSV", canvaCsv);
-    if (!out.find(l => l.label === "Canva CSV")) add("CSV", csvUrl);
-    add("PDF", pdfUrl);
-
-    return { id, created_at, report_type, links: out, ...r };
-  });
+// Add fallbacks using id + token in query so clicks are authenticated
+const hasLabel = (lbl: string) => out.some(x => x.label.toLowerCase() === lbl.toLowerCase());
+const id = (r.id as string) || "";
+const tok = token ? `?token=${encodeURIComponent(token)}` : "";
+if (id) {
+  if (!hasLabel("JSON")) add("JSON", `${base}/reports/${id}/json${tok}`);
+  if (!hasLabel("Canva CSV") && !hasLabel("CSV")) add("Canva CSV", `${base}/reports/${id}/csv${tok ? tok + "&variant=canva" : "?variant=canva"}`);
+  if (!hasLabel("PDF")) add("PDF", `${base}/reports/${id}/pdf${tok}`);
 }
 
 export default function DashboardPage() {
