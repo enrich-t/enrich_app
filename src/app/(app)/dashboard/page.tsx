@@ -8,7 +8,25 @@ type Profile = { id?: string; user_id?: string; business_name?: string; [k: stri
 function normalizeReports(raw: any): Report[] {
   const arr = Array.isArray(raw) ? raw : raw?.reports ?? raw?.items ?? raw?.data ?? [];
   if (!Array.isArray(arr)) return [];
+
   const pickUrl = (x: any) => (typeof x === "string" && /^https?:\/\//i.test(x) ? x : undefined);
+
+  const looksLikePdf = (url?: string, labelMaybe?: string) => {
+    if (!url) return false;
+    try {
+      const low = url.toLowerCase();
+      if (low.endsWith(".pdf")) return true;
+      const u = new URL(url);
+      const filename =
+        u.searchParams.get("filename") ||
+        u.searchParams.get("download") ||
+        u.searchParams.get("name");
+      if (filename && filename.toLowerCase().endsWith(".pdf")) return true;
+    } catch { /* ignore */ }
+    if (labelMaybe && /pdf/i.test(labelMaybe)) return true;
+    return false;
+  };
+
   return arr.map((r: any) => {
     const id = r.id ?? r.report_id ?? r.uuid ?? r.pk ?? undefined;
     const created_at = r.created_at ?? r.createdAt ?? r.created ?? r.timestamp ?? undefined;
@@ -16,39 +34,43 @@ function normalizeReports(raw: any): Report[] {
 
     // Preferred URLs (exact fields first)
     const jsonUrl  = pickUrl(r.json_url  ?? r.jsonUrl  ?? r.json);
-    const canvaCsv = pickUrl(
-      r.canva_csv_url ?? r.canvaCsvUrl ?? r.canva_csv ??
-      // look in files[] for anything that looks like a Canva CSV
-      (Array.isArray(r.files) ? (r.files.find((f: any) => {
-        const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
-        const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString().toLowerCase();
-        return u && u.toLowerCase().endsWith(".csv") && label.includes("canva");
-      }) || {}).url : undefined)
-    );
-    const csvUrl   = pickUrl(r.csv_url   ?? r.csvUrl   ?? r.csv);
-    const pdfUrl   = pickUrl(r.pdf_url   ?? r.pdfUrl   ?? r.pdf);
 
-    // Also scan files[] for json/csv/pdf if fields were missing
-    const urls = new Set<string>([
-      ...(jsonUrl  ? [jsonUrl]  : []),
-      ...(canvaCsv ? [canvaCsv] : []),
-      ...(csvUrl   ? [csvUrl]   : []),
-      ...(pdfUrl   ? [pdfUrl]   : []),
-    ]);
-    if (Array.isArray(r.files)) {
+    // Canva CSV preferred (field or files[] with label including "canva")
+    const canvaCsv =
+      pickUrl(r.canva_csv_url ?? r.canvaCsvUrl ?? r.canva_csv) ||
+      (Array.isArray(r.files)
+        ? (() => {
+            const f = r.files.find((f: any) => {
+              const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
+              const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString();
+              return u && /\.csv(\?|$)/i.test(u) && /canva/i.test(label);
+            });
+            return f ? pickUrl(f.url ?? f.public_url ?? f.signed_url) : undefined;
+          })()
+        : undefined);
+
+    const csvUrl   = pickUrl(r.csv_url   ?? r.csvUrl   ?? r.csv);
+
+    // PDF: many APIs hide PDF under odd keys or signed URLs; be generous
+    let pdfUrl = pickUrl(r.pdf_url ?? r.pdfUrl ?? r.pdf ?? r.report_pdf_url ?? r.summary_pdf_url ?? r.download_pdf);
+    if (!looksLikePdf(pdfUrl)) pdfUrl = undefined;
+
+    // Scan files[] for a PDF-like link or label
+    if (!pdfUrl && Array.isArray(r.files)) {
       for (const f of r.files) {
         const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
+        const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString();
+        if (looksLikePdf(u, label)) { pdfUrl = u; break; }
+      }
+    }
+
+    // As a last resort, scan all string props: if key contains "pdf" or url looks like PDF, take it
+    if (!pdfUrl) {
+      for (const [k, v] of Object.entries(r)) {
+        if (typeof v !== "string") continue;
+        const u = pickUrl(v);
         if (!u) continue;
-        const low = u.toLowerCase();
-        if ((low.endsWith(".json") || low.endsWith(".csv") || low.endsWith(".pdf")) && !urls.has(u)) {
-          urls.add(u);
-          if (low.endsWith(".json") && !jsonUrl) { (r as any).__json = u; }
-          else if (low.endsWith(".csv") && !csvUrl && !canvaCsv) {
-            const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString().toLowerCase();
-            if (label.includes("canva")) (r as any).__canva = u; else (r as any).__csv = u;
-          }
-          else if (low.endsWith(".pdf") && !pdfUrl) { (r as any).__pdf = u; }
-        }
+        if (k.toLowerCase().includes("pdf") || looksLikePdf(u)) { pdfUrl = u; break; }
       }
     }
 
@@ -63,11 +85,10 @@ function normalizeReports(raw: any): Report[] {
       out.push({ label, url });
     };
 
-    add("JSON", jsonUrl || (r as any).__json);
-    // Prefer Canva CSV; if absent, use plain CSV
-    add("Canva CSV", canvaCsv || (r as any).__canva);
-    if (!out.find(l => l.label === "Canva CSV")) add("CSV", csvUrl || (r as any).__csv);
-    add("PDF", pdfUrl || (r as any).__pdf);
+    add("JSON", jsonUrl);
+    add("Canva CSV", canvaCsv);
+    if (!out.find(l => l.label === "Canva CSV")) add("CSV", csvUrl);
+    add("PDF", pdfUrl);
 
     return { id, created_at, report_type, links: out, ...r };
   });
