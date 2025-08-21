@@ -1,115 +1,165 @@
-﻿"use client";
-import { useMemo, useState } from "react";
+"use client";
+
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+
+type LoginResponse = {
+  access_token?: string;
+  refresh_token?: string;
+  business_id?: string;
+  // Optional: some backends return profile inline
+  profile?: {
+    id: string;
+    business_id?: string;
+    business_name?: string;
+  };
+  message?: string;
+  detail?: string;
+};
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") || "http://localhost:8000";
 
 export default function LoginPage() {
   const router = useRouter();
-  const base = useMemo(
-    () => (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com").replace(/\/$/, ""),
-    []
-  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setErr(null);
+    setLoading(true);
+
     try {
-      const res = await fetch(`${base}/auth/login`, {
+      // 1) Login
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // Most FastAPI JWT setups don’t require cookies; tokens come in JSON
+        credentials: "omit",
         body: JSON.stringify({ email, password }),
       });
-      const text = await res.text();
-      let data: any = null;
-      try { data = text ? JSON.parse(text) : null; } catch {}
 
       if (!res.ok) {
-        throw new Error(
-          data?.detail?.message || data?.message || text || "Login failed"
-        );
+        const msg = await safeErrorText(res);
+        throw new Error(msg || `Login failed (${res.status})`);
       }
 
-      const token =
-        data?.access_token ||
-        data?.token ||
-        data?.jwt ||
-        data?.session?.access_token ||
-        data?.data?.access_token;
+      const data = (await res.json()) as LoginResponse;
 
-      if (!token) throw new Error("No access token in response");
+      const access = data.access_token;
+      const refresh = data.refresh_token;
 
-      const user = data?.user || data?.profile || { email, user_id: data?.user_id };
+      if (!access || !refresh) {
+        throw new Error("Login succeeded but tokens were not returned.");
+      }
 
-      // Save exactly what the dashboard expects:
-      localStorage.setItem("enrich_access", token);
-      localStorage.setItem(
-        "enrich_user",
-        JSON.stringify({
-          email: user?.email || email,
-          user_id: user?.id || user?.user_id || data?.user_id,
-        })
-      );
+      // Persist tokens
+      localStorage.setItem("access_token", access);
+      localStorage.setItem("refresh_token", refresh);
 
-      // Navigate to dashboard (soft + hard fallback)
-      try { router.replace("/dashboard"); } catch {}
-      setTimeout(() => { if (window.location.pathname !== "/dashboard") window.location.href = "/dashboard"; }, 150);
+      // 2) Figure out business_id
+      let businessId = data.business_id || data.profile?.business_id || "";
+
+      if (!businessId) {
+        // Fallback: call /auth/me
+        const meRes = await fetch(`${API_BASE}/auth/me`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${access}`,
+          },
+          credentials: "omit",
+        });
+
+        if (meRes.ok) {
+          const me = await meRes.json();
+          businessId = me?.business_id || "";
+        }
+      }
+
+      if (businessId) {
+        localStorage.setItem("business_id", businessId);
+      }
+
+      // 3) Redirect to dashboard
+      router.replace("/dashboard");
     } catch (e: any) {
-      setErr(e?.message || "Login failed");
+      setErr(e?.message || "Network error. Please try again.");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
   return (
-    <div style={{ fontFamily: "Inter, system-ui, Arial", maxWidth: 420, margin: "48px auto", padding: "0 16px" }}>
-      <h2 style={{ marginBottom: 12 }}>Log in</h2>
-      <div style={{ marginBottom: 8, fontSize: 12, opacity: 0.6 }}>API base: {base}</div>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 10 }}>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span>Email</span>
+    <main className="max-w-md mx-auto p-6">
+      <h1 className="text-2xl font-semibold mb-2">Sign in</h1>
+      <p className="text-gray-600 mb-6">Use your Enrich account to continue.</p>
+
+      {err && (
+        <div className="mb-4 rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">
+          {err}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm mb-1">Email</label>
           <input
             type="email"
+            required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+            className="w-full rounded-xl border px-3 py-2 outline-none"
+            placeholder="you@example.com"
+            autoComplete="email"
           />
-        </label>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span>Password</span>
+        </div>
+
+        <div>
+          <label className="block text-sm mb-1">Password</label>
           <input
             type="password"
+            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+            className="w-full rounded-xl border px-3 py-2 outline-none"
+            placeholder="••••••••"
+            autoComplete="current-password"
           />
-        </label>
+        </div>
+
         <button
           type="submit"
-          disabled={busy}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid #0f172a",
-            background: "#0f172a",
-            color: "#fff",
-            fontWeight: 700,
-            cursor: "pointer",
-            opacity: busy ? 0.7 : 1,
-          }}
+          disabled={loading}
+          className="w-full rounded-xl bg-black text-white py-2.5 hover:opacity-90 disabled:opacity-60"
         >
-          {busy ? "Signing in…" : "Sign in"}
+          {loading ? "Signing in..." : "Sign in"}
         </button>
-        {err && <div style={{ color: "crimson" }}>{err}</div>}
       </form>
-      <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
-        After success, we save <code>enrich_access</code> and <code>enrich_user</code> to <code>localStorage</code> and go to <code>/dashboard</code>.
-      </div>
-    </div>
+
+      <p className="text-sm text-gray-600 mt-4">
+        Forgot your password?{" "}
+        <a href="/reset" className="underline">
+          Reset it
+        </a>
+      </p>
+    </main>
   );
+}
+
+async function safeErrorText(res: Response) {
+  try {
+    const t = await res.text();
+    try {
+      const j = JSON.parse(t);
+      return j?.detail || j?.message || t;
+    } catch {
+      return t;
+    }
+  } catch {
+    return null;
+  }
 }
