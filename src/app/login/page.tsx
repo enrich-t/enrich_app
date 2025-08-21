@@ -3,15 +3,6 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type LoginResponse = {
-  access_token?: string;
-  refresh_token?: string;
-  business_id?: string;
-  profile?: { business_id?: string; business_name?: string };
-  detail?: string;
-  message?: string;
-};
-
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") || "http://localhost:8000";
 
@@ -28,57 +19,67 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 0) Wake backend quickly (Render cold start)
+      // Wake backend (Render cold start)
       await fetch(`${API_BASE}/health`, { method: "GET" }).catch(() => {});
 
-      // 1) Login
+      // 1) Login — send credentials so server can set HttpOnly cookies
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "omit",
+        credentials: "include", // IMPORTANT for cookie-based auth
         body: JSON.stringify({ email, password }),
       });
 
-      // Bubble clear, readable error
+      const raw = await res.text();
+      let data: any = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch {}
+
       if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        try {
-          const j = JSON.parse(txt || "{}");
-          throw new Error(j.detail || j.message || `Login failed (${res.status})`);
-        } catch {
-          throw new Error(txt || `Login failed (${res.status})`);
-        }
+        const msg = data?.detail || data?.message || raw || `Login failed (${res.status})`;
+        throw new Error(msg);
       }
 
-      const data = (await res.json()) as LoginResponse;
-      const access = data.access_token;
-      const refresh = data.refresh_token;
-      if (!access || !refresh) throw new Error("Tokens missing from response.");
+      // 2) Token mode (optional)
+      const access =
+        data?.access_token ?? data?.accessToken ?? data?.token ?? null;
+      const refresh = data?.refresh_token ?? data?.refreshToken ?? null;
 
-      localStorage.setItem("access_token", access);
-      localStorage.setItem("refresh_token", refresh);
+      if (access) localStorage.setItem("access_token", String(access));
+      if (refresh) localStorage.setItem("refresh_token", String(refresh));
 
-      // 2) Resolve business_id
-      let businessId = data.business_id || data.profile?.business_id || "";
+      // 3) Decide auth mode
+      const mode = access ? "bearer" : "cookie";
+      localStorage.setItem("AUTH_MODE", mode);
+
+      // 4) Resolve business_id
+      let businessId =
+        data?.business_id ?? data?.profile?.business_id ?? "";
+
+      // Try /auth/me using the chosen mode
       if (!businessId) {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (mode === "bearer" && access) headers["Authorization"] = `Bearer ${access}`;
+
         const meRes = await fetch(`${API_BASE}/auth/me`, {
           method: "GET",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${access}` },
-          credentials: "omit",
+          headers,
+          credentials: mode === "cookie" ? "include" : "omit",
         });
+
         if (meRes.ok) {
-          const me = await meRes.json();
+          const me = await meRes.json().catch(() => ({}));
           businessId = me?.business_id || "";
         }
       }
-      if (businessId) localStorage.setItem("business_id", businessId);
 
+      if (businessId) localStorage.setItem("business_id", String(businessId));
+
+      // 5) Go to dashboard
       router.replace("/dashboard");
     } catch (e: any) {
-      // Normalize common network/CORS “Failed to fetch” into a friendly message
       const msg =
         typeof e?.message === "string" && e.message.toLowerCase().includes("failed to fetch")
-          ? "Network error: unable to reach the backend. Try again in a moment."
+          ? "Network error: unable to reach the backend. Try again shortly."
           : e?.message || "Unexpected error. Please try again.";
       setErr(msg);
     } finally {
@@ -91,9 +92,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-2xl border p-6 shadow-sm bg-white">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Sign in</h1>
-          <p className="text-gray-600 mt-1">
-            Use your Enrich account to access your dashboard.
-          </p>
+          <p className="text-gray-600 mt-1">Use your Enrich account to access your dashboard.</p>
         </div>
 
         {err && (
@@ -129,7 +128,7 @@ export default function LoginPage() {
             />
           </div>
 
-        <button
+          <button
             type="submit"
             disabled={loading}
             className="w-full rounded-xl bg-black text-white py-2.5 hover:opacity-90 disabled:opacity-60"
@@ -139,13 +138,10 @@ export default function LoginPage() {
         </form>
 
         <p className="text-sm text-gray-600 mt-4">
-          Forgot your password? <a href="/reset" className="underline">Reset it</a>
+          Forgot your password? <a className="underline" href="/reset">Reset it</a>
         </p>
 
-        <p className="text-[11px] text-gray-400 mt-4">
-          {/* Dev-only breadcrumb—remove later if you want */}
-          API: {API_BASE}
-        </p>
+        <p className="text-[11px] text-gray-400 mt-4">API: {API_BASE}</p>
       </div>
     </main>
   );
