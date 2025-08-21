@@ -1,12 +1,11 @@
 ﻿"use client";
-// ENRICH DASHBOARD v2
 import { useEffect, useMemo, useState } from "react";
 
 type Link = { label: string; url: string };
 type Report = { id?: string; report_type?: string; created_at?: string; links?: Link[]; [k: string]: unknown };
 type Profile = { id?: string; user_id?: string; business_name?: string; size?: string | null; [k: string]: unknown };
 
-/* ---------- helpers: shape reports ---------- */
+/* ---------- helpers ---------- */
 function normalizeReports(raw: any): Report[] {
   const arr = Array.isArray(raw) ? raw : raw?.reports ?? raw?.items ?? raw?.data ?? [];
   if (!Array.isArray(arr)) return [];
@@ -65,7 +64,7 @@ function normalizeReports(raw: any): Report[] {
   });
 }
 
-/* ---------- tiny UI kit (no Tailwind) ---------- */
+/* ---------- tiny UI kit ---------- */
 const S = {
   page: { fontFamily: "Inter, ui-sans-serif, system-ui, Arial", maxWidth: 1100, margin: "24px auto", padding: "0 16px" },
   rowCols: (n: number) => ({ display: "grid", gap: 16, gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }),
@@ -82,7 +81,7 @@ const S = {
   linkBtn: { display: "inline-block", padding: "6px 10px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fafafa", fontSize: 13, fontWeight: 600, color: "#0f172a" },
 };
 
-/* ---------- donut placeholder ---------- */
+/* ---------- donut ---------- */
 function Donut({ percent = 72, size = 90, stroke = 10, color = "#0ea5e9", track = "#e5e7eb" }: { percent?: number; size?: number; stroke?: number; color?: string; track?: string }) {
   const r = (size - stroke) / 2; const c = 2 * Math.PI * r; const dash = Math.max(0, Math.min(100, percent)) / 100 * c;
   return (
@@ -94,7 +93,7 @@ function Donut({ percent = 72, size = 90, stroke = 10, color = "#0ea5e9", track 
   );
 }
 
-/* ---------- main page ---------- */
+/* ---------- main ---------- */
 export default function DashboardPage() {
   const base = useMemo(() => (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com").replace(/\/$/, ""), []);
   const [token, setToken] = useState<string | null>(null);
@@ -104,14 +103,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [genStatus, setGenStatus] = useState<string>("");
-  const [credits, setCredits] = useState<number>(() => {
-    const v = Number(localStorage.getItem("enrich_credits") || "100"); return Number.isFinite(v) ? v : 100;
-  });
+  const [credits, setCredits] = useState<number>(100); // <-- default only; SSR-safe
 
+  // hydrate session + credits AFTER mount (SSR-safe)
   useEffect(() => {
     try {
       setToken(localStorage.getItem("enrich_access"));
       const u = localStorage.getItem("enrich_user"); setEmail(u ? (JSON.parse(u).email as string) : null);
+      const saved = Number(localStorage.getItem("enrich_credits") || "100");
+      if (Number.isFinite(saved)) setCredits(saved);
     } catch {}
   }, []);
 
@@ -170,7 +170,7 @@ export default function DashboardPage() {
   useEffect(() => { fetchProfileAndReports(); /* eslint-disable-next-line */ }, [token, base]);
 
   async function pollReports(times = 3, delayMs = 1200) {
-    for (let i = 0; i < times; i++) { await new Promise(r=>setTimeout(r, delayMs)); await fetchProfileAndReports(); if (i<times-1) setGenStatus(`Updating list… (${i+1}/${times})`); }
+    for (let i = 0; i < times; i++) { await new Promise(r=>setTimeout(r, delayMs)); await fetchProfileAndReports(); }
     setGenStatus("");
   }
 
@@ -184,26 +184,22 @@ export default function DashboardPage() {
       });
       const text = await res.text(); let data: any = null; try { data = text ? JSON.parse(text) : null; } catch {}
       if (!res.ok) throw new Error(data?.detail?.message || text || "Generate failed");
-      // pretend to spend a credit
-      const n = Math.max(0, credits - 1); setCredits(n); localStorage.setItem("enrich_credits", String(n));
+      const n = Math.max(0, credits - 1); setCredits(n); try { localStorage.setItem("enrich_credits", String(n)); } catch {}
       setGenStatus("Generated! Updating list…"); await pollReports(3, 1500);
     } catch (e: any) { setGenStatus(""); setErr(e?.message || "Generate failed"); }
   }
 
-  // derived UI values
-  const transparency = 72; // placeholder
+  const transparency = 72;
   const growthStage = profile?.size ? String(profile.size) : "Seedling";
   const growthEmoji = "🌱";
 
   return (
     <div style={S.page}>
-      {/* header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <h2 style={S.h2}>Dashboard</h2>
-        <span style={{ ...S.tag, marginLeft: "auto" }}>v2 • {email ? <>Signed in as <strong>{email}</strong></> : "Signed in"}</span>
+        <span style={{ ...S.tag, marginLeft: "auto" }}>v2</span>
       </div>
 
-      {/* top stats */}
       <div style={S.rowCols(4)}>
         <div style={S.card}>
           <div style={S.h3 as any}>Transparency Score</div>
@@ -229,8 +225,8 @@ export default function DashboardPage() {
           <div style={S.h3 as any}>AI Credits</div>
           <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>{credits}</div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button style={S.btnGhost} onClick={() => { const n = credits + 50; setCredits(n); localStorage.setItem("enrich_credits", String(n)); }}>+50</button>
-            <button style={S.btnGhost} onClick={() => { const n = 100; setCredits(n); localStorage.setItem("enrich_credits", String(n)); }}>Reset</button>
+            <button style={S.btnGhost} onClick={() => { const n = credits + 50; setCredits(n); try{localStorage.setItem("enrich_credits", String(n));}catch{} }}>+50</button>
+            <button style={S.btnGhost} onClick={() => { const n = 100; setCredits(n); try{localStorage.setItem("enrich_credits", String(n));}catch{} }}>Reset</button>
           </div>
         </div>
 
@@ -244,7 +240,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* recommendations */}
       <div style={{ ...S.card, marginTop: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={S.h3 as any}>Recommendations</div>
@@ -257,7 +252,6 @@ export default function DashboardPage() {
         </ul>
       </div>
 
-      {/* recent reports */}
       <div style={{ ...S.card, marginTop: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
           <div style={S.h3 as any}>Recent Reports</div>
@@ -284,7 +278,6 @@ export default function DashboardPage() {
                 {reports.slice(0, 10).map((r, i) => {
                   const created = r.created_at ? new Date(r.created_at as string).toLocaleString() : "—";
                   const id = (r.id as string) || `row-${i}`;
-                  // merge existing links + fallbacks
                   const baseLinks = (r.links || []) as Link[];
                   const out: Link[] = []; const seen = new Set<string>();
                   const add = (label: string, url?: string) => { if (!url) return; const key = url.toLowerCase(); if (seen.has(key)) return; seen.add(key); out.push({ label, url }); };
