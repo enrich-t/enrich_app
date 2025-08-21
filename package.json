@@ -25,6 +25,6 @@
                             "@eslint/eslintrc":  "^3"
                         },
     "engines":  {
-                    "node":  "\u003e=18.18 \u003c20"
+                    "node":  "22.x"
                 }
 }
