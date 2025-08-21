@@ -16,7 +16,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Call our same-origin proxy (sets HttpOnly cookies on this domain)
+      // Same-origin proxy: sets HttpOnly cookies for this domain
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -24,19 +24,17 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Login failed (${res.status})`);
-      }
+      const raw = await res.text();
+      if (!res.ok) throw new Error(raw || `Login failed (${res.status})`);
 
-      // Confirm session by calling our proxy /api/auth/me
+      // Confirm session
       const me = await fetch("/api/auth/me", { credentials: "include" });
       if (!me.ok) {
-        const t = await me.text().catch(() => "");
+        const t = await me.text().catch(()=>"");
         throw new Error(t || "Login succeeded but /me failed.");
       }
 
-      // Store business_id (optional; convenient for dashboard)
+      // Convenience: store business_id for dashboard calls
       try {
         const j = await me.json();
         if (j?.business_id) localStorage.setItem("business_id", String(j.business_id));
