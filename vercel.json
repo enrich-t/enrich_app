@@ -1,0 +1,5 @@
+﻿{
+  "framework": "nextjs",
+  "installCommand": "npm ci --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000",
+  "buildCommand": "next build"
+}
