@@ -1,352 +1,390 @@
-﻿"use client";
-import { useEffect, useMemo, useState } from "react";
+"use client";
+
+import React, { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-type Link = { label: string; url: string };
-type Report = { id?: string; report_type?: string; created_at?: string; links?: Link[]; [k: string]: unknown };
-type Profile = { id?: string; user_id?: string; business_name?: string; size?: string | null; [k: string]: unknown };
-
-/* ---------- helpers ---------- */
-function normalizeReports(raw: any): Report[] {
-  const arr = Array.isArray(raw) ? raw : raw?.reports ?? raw?.items ?? raw?.data ?? [];
-  if (!Array.isArray(arr)) return [];
-  const pickUrl = (x: any) => (typeof x === "string" && /^https?:\/\//i.test(x) ? x : undefined);
-  const looksLikePdf = (url?: string, labelMaybe?: string) => {
-    if (!url) return false;
-    try {
-      const low = url.toLowerCase(); if (low.endsWith(".pdf")) return true;
-      const u = new URL(url);
-      const fn = u.searchParams.get("filename") || u.searchParams.get("download") || u.searchParams.get("name");
-      if (fn && fn.toLowerCase().endsWith(".pdf")) return true;
-    } catch {}
-    return !!(labelMaybe && /pdf/i.test(labelMaybe));
-  };
-  return arr.map((r: any) => {
-    const id = r.id ?? r.report_id ?? r.uuid ?? r.pk ?? undefined;
-    const created_at = r.created_at ?? r.createdAt ?? r.created ?? r.timestamp ?? undefined;
-    const report_type = r.report_type ?? r.type ?? r.kind ?? "Report";
-    const jsonUrl = pickUrl(r.json_url ?? r.jsonUrl ?? r.json);
-    const canvaCsv =
-      pickUrl(r.canva_csv_url ?? r.canvaCsvUrl ?? r.canva_csv) ||
-      (Array.isArray(r.files)
-        ? (() => {
-            const f = r.files.find((f: any) => {
-              const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
-              const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString();
-              return u && /\.csv(\?|$)/i.test(u) && /canva/i.test(label);
-            });
-            return f ? pickUrl(f.url ?? f.public_url ?? f.signed_url) : undefined;
-          })()
-        : undefined);
-    const csvUrl = pickUrl(r.csv_url ?? r.csvUrl ?? r.csv);
-    let pdfUrl = pickUrl(r.pdf_url ?? r.pdfUrl ?? r.pdf ?? r.report_pdf_url ?? r.summary_pdf_url ?? r.download_pdf);
-    if (!looksLikePdf(pdfUrl)) pdfUrl = undefined;
-    if (!pdfUrl && Array.isArray(r.files)) {
-      for (const f of r.files) {
-        const u = pickUrl(f?.url ?? f?.public_url ?? f?.signed_url);
-        const label = (f?.label ?? f?.type ?? f?.filename ?? "").toString();
-        if (looksLikePdf(u, label)) { pdfUrl = u; break; }
-      }
-    }
-    if (!pdfUrl) {
-      for (const [k, v] of Object.entries(r)) {
-        if (typeof v !== "string") continue;
-        const u = pickUrl(v); if (!u) continue;
-        if (k.toLowerCase().includes("pdf") || looksLikePdf(u)) { pdfUrl = u; break; }
-      }
-    }
-    const out: Link[] = []; const seen = new Set<string>();
-    const add = (label: string, url?: string) => { if (!url) return; const key = url.toLowerCase(); if (seen.has(key)) return; seen.add(key); out.push({ label, url }); };
-    add("JSON", jsonUrl);
-    add("Canva CSV", canvaCsv);
-    if (!out.find((l) => l.label === "Canva CSV")) add("CSV", csvUrl);
-    add("PDF", pdfUrl);
-    return { id, created_at, report_type, links: out, ...r };
-  });
-}
-
-/* ---------- tiny UI kit ---------- */
-const S = {
-  page: { fontFamily: "Inter, ui-sans-serif, system-ui, Arial", maxWidth: 1100, margin: "24px auto", padding: "0 16px" },
-  rowCols: (n: number) => ({ display: "grid", gap: 16, gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }),
-  card: { background: "#fff", border: "1px solid #eee", borderRadius: 16, padding: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.04)" },
-  h2: { fontSize: 24, fontWeight: 700, margin: "0 0 8px" },
-  h3: { fontSize: 18, fontWeight: 700, margin: "0 0 6px" },
-  sub: { fontSize: 13, opacity: 0.7 },
-  btn: { padding: "8px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#0f172a", color: "#fff", fontWeight: 600, cursor: "pointer" as const },
-  btnGhost: { padding: "8px 12px", borderRadius: 10, border: "1px solid #ddd", background: "#fff", color: "#0f172a", fontWeight: 600, cursor: "pointer" as const },
-  tag: { padding: "2px 8px", borderRadius: 999, fontSize: 12, background: "#f1f5f9", color: "#0f172a", border: "1px solid #e5e7eb" },
-  table: { width: "100%", borderCollapse: "separate" as const, borderSpacing: 0 },
-  th: { textAlign: "left" as const, fontSize: 12, textTransform: "uppercase" as const, letterSpacing: 0.4, color: "#475569", borderBottom: "1px solid #e5e7eb", padding: "10px 8px" },
-  td: { fontSize: 14, color: "#0f172a", borderBottom: "1px solid "#f1f5f9", padding: "12px 8px", verticalAlign: "middle" as const },
-  linkBtn: { display: "inline-block", padding: "6px 10px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fafafa", fontSize: 13, fontWeight: 600, color: "#0f172a" },
+type Profile = {
+  id: string;
+  business_id?: string;
+  business_name?: string;
+  brand_primary_colour?: string | null;
+  brand_secondary_colour?: string | null;
+  ai_credits?: number;
+  transparency_score?: number; // 0–100
+  growth_stage?: "initiated" | "growing" | "enriched" | string | null;
 };
 
-/* ---------- donut ---------- */
-function Donut({ percent = 72, size = 90, stroke = 10, color = "#0ea5e9", track = "#e5e7eb" }: { percent?: number; size?: number; stroke?: number; color?: string; track?: string }) {
-  const r = (size - stroke) / 2; const c = 2 * Math.PI * r; const dash = Math.max(0, Math.min(100, percent)) / 100 * c;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size/2} cy={size/2} r={r} stroke={track} strokeWidth={stroke} fill="none"/>
-      <circle cx={size/2} cy={size/2} r={r} stroke={color} strokeWidth={stroke} fill="none" strokeLinecap="round" strokeDasharray={`${dash} ${c-dash}`} transform={`rotate(-90 ${size/2} ${size/2})`}/>
-      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fontWeight="700" fontSize="16" fill="#0f172a">{Math.round(percent)}%</text>
-    </svg>
-  );
-}
+type Report = {
+  id: string;
+  title?: string;
+  created_at?: string;
+  status?: string;
+  export_link?: string | null;
+};
 
-/* ---------- page ---------- */
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/+$/, "") || "http://localhost:8000";
+
 export default function DashboardPage() {
   const router = useRouter();
-  const base = useMemo(() => (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com").replace(/\/$/, ""), []);
-  const [checked, setChecked] = useState(false);       // auth gate state
-  const [token, setToken] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
+
+  const [authChecked, setAuthChecked] = useState(false); // gate UI until we check localStorage (client-only)
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [recsCount, setRecsCount] = useState<number>(0);
+
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [genStatus, setGenStatus] = useState<string>("");
-  const [credits, setCredits] = useState<number>(100); // hydrate after mount
 
-  // --- AUTH GATE (client-only) ---
-  useEffect(() => {
+  // --- Helpers (client-only) ---
+  const readTokens = useCallback(() => {
     try {
-      const t = localStorage.getItem("enrich_access");
-      const uRaw = localStorage.getItem("enrich_user");
-      if (!t) {
-        setChecked(true);
-        router.replace("/login");
-        return;
-      }
-      setToken(t);
-      if (uRaw) {
-        try { const u = JSON.parse(uRaw); setEmail(u?.email ?? null); } catch {}
-      }
-    } finally {
-      setChecked(true);
+      const at = localStorage.getItem("access_token");
+      const rt = localStorage.getItem("refresh_token"); // keep for refresh flow
+      return { at, rt };
+    } catch {
+      return { at: null, rt: null };
     }
-  }, [router]);
+  }, []);
 
-  // helper to open same-origin downloads with Bearer
-  const sameOrigin = (url: string) => { try { const u = new URL(url); const b = new URL(base); return u.origin === b.origin; } catch { return false; } };
-  async function openAuthed(url: string, fallbackName?: string) {
-    if (!sameOrigin(url) || !token) { window.open(url, "_blank", "noopener,noreferrer"); return; }
+  const writeAccessToken = useCallback((token: string) => {
     try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.status === 401) { localStorage.removeItem("enrich_access"); localStorage.removeItem("enrich_user"); router.replace("/login"); return; }
-      if (!res.ok) throw new Error((await res.text()) || res.statusText);
-      const blob = await res.blob();
-      let filename = fallbackName || "download";
-      const cd = res.headers.get("content-disposition");
-      if (cd) { const m = /filename\*?=(?:UTF-8''|")?([^";\n]+)/i.exec(cd); if (m?.[1]) filename = decodeURIComponent(m[1].replace(/"/g, "")); }
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = objectUrl; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(objectUrl);
-    } catch (e: any) { alert(`Download failed: ${e?.message || e}`); }
-  }
+      localStorage.setItem("access_token", token);
+    } catch {}
+  }, []);
 
-  const buildLink = (path: string, extra?: Record<string, string>): string => {
-    const u = new URL(path, "http://example"); const params = new URLSearchParams(u.search);
-    if (token) params.set("token", token); if (extra) for (const [k,v] of Object.entries(extra)) if (v) params.set(k, v);
-    const qs = params.toString(); const clean = path.split("?")[0]; return qs ? `${clean}?${qs}` : clean;
+  const apiFetch = useCallback(
+    async (input: string, init?: RequestInit) => {
+      // Attach Bearer automatically; try refresh once on 401
+      const doFetch = async (token?: string) => {
+        const headers = new Headers(init?.headers || {});
+        if (token) headers.set("Authorization", `Bearer ${token}`);
+        headers.set("Content-Type", headers.get("Content-Type") || "application/json");
+        return fetch(`${API_BASE}${input}`, { ...init, headers });
+      };
+
+      let token = accessToken;
+      let res = await doFetch(token || undefined);
+
+      if (res.status === 401) {
+        // Attempt refresh once
+        const { rt } = readTokens();
+        if (!rt) return res;
+
+        const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: rt }),
+        });
+
+        if (refreshRes.ok) {
+          const data = await refreshRes.json().catch(() => ({}));
+          const newToken = data?.access_token as string | undefined;
+          if (newToken) {
+            writeAccessToken(newToken);
+            setAccessToken(newToken);
+            res = await doFetch(newToken);
+          }
+        }
+      }
+
+      return res;
+    },
+    [API_BASE, accessToken, readTokens, writeAccessToken]
+  );
+
+  const fetchMeAndReports = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+
+    try {
+      // 1) Who am I?
+      const meRes = await apiFetch("/auth/me", { method: "GET" });
+      if (!meRes.ok) {
+        if (meRes.status === 401) {
+          // Not logged in
+          setProfile(null);
+          setReports([]);
+          setLoading(false);
+          return;
+        }
+        throw new Error(`Auth check failed (${meRes.status})`);
+      }
+      const me = (await meRes.json()) as Profile;
+      setProfile(me);
+
+      // 2) Reports list (needs business_id)
+      const businessId =
+        me.business_id ||
+        (typeof window !== "undefined" ? localStorage.getItem("business_id") : null);
+
+      let reportsData: Report[] = [];
+      if (businessId) {
+        const listRes = await apiFetch(`/reports/list/${businessId}`, { method: "GET" });
+        if (!listRes.ok) throw new Error(`Reports fetch failed (${listRes.status})`);
+        reportsData = (await listRes.json()) as Report[];
+      }
+      setReports(Array.isArray(reportsData) ? reportsData : []);
+
+      // 3) (Optional) recommendations count from profile or compute later
+      // If backend provides a number on /auth/me, prefer it; else derive 0 for now.
+      const inferredRecs =
+        typeof (me as any)?.pending_recommendations === "number"
+          ? (me as any).pending_recommendations
+          : 0;
+      setRecsCount(inferredRecs);
+    } catch (e: any) {
+      setErr(e?.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
+  // --- First client pass: read tokens from localStorage safely ---
+  useEffect(() => {
+    const { at } = readTokens();
+    if (!at) {
+      setAccessToken(null);
+    } else {
+      setAccessToken(at);
+    }
+    setAuthChecked(true);
+  }, [readTokens]);
+
+  // Once we know auth state, fetch profile/reports if logged in
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!accessToken) {
+      // Not logged in — show friendly state (and offer Login)
+      setProfile(null);
+      setReports([]);
+      setLoading(false);
+      return;
+    }
+    fetchMeAndReports();
+  }, [authChecked, accessToken, fetchMeAndReports]);
+
+  // UI helpers
+  const growthLabel = (stage?: string | null) => {
+    switch ((stage || "").toLowerCase()) {
+      case "initiated":
+        return "Initiated";
+      case "growing":
+        return "Growing";
+      case "enriched":
+        return "Enriched";
+      default:
+        return "Unknown";
+    }
   };
 
-  async function tryFetchList(bizId: string) {
-    const tries: { label: string; url: string }[] = [
-      { label: "list/{bizId}", url: `${base}/reports/list/${bizId}` },
-      { label: "list?business_id=", url: `${base}/reports/list?business_id=${encodeURIComponent(bizId)}` },
-    ];
-    for (const t of tries) {
-      try {
-        const res = await fetch(t.url, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.status === 401) { localStorage.removeItem("enrich_access"); localStorage.removeItem("enrich_user"); router.replace("/login"); return []; }
-        const text = await res.text();
-        if (!res.ok) continue;
-        const parsed = text ? JSON.parse(text) : {}; const list = normalizeReports(parsed);
-        if (Array.isArray(list)) return list;
-      } catch {}
-    }
-    return [];
+  // --- Render ---
+
+  // Until we read localStorage on client, render a neutral shell (SSR-safe)
+  if (!authChecked) {
+    return (
+      <main className="p-6 max-w-5xl mx-auto">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 w-64 bg-gray-200 rounded" />
+          <div className="h-24 w-full bg-gray-100 rounded" />
+          <div className="h-48 w-full bg-gray-100 rounded" />
+        </div>
+      </main>
+    );
   }
 
-  async function fetchProfileAndReports() {
-    if (!token) return;
-    setLoading(true); setErr(null);
-    try {
-      const meRes = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-      if (meRes.status === 401) { localStorage.removeItem("enrich_access"); localStorage.removeItem("enrich_user"); router.replace("/login"); return; }
-      const meText = await meRes.text(); let me: any = {}; try { me = meText ? JSON.parse(meText) : {}; } catch {}
-      if (!meRes.ok) throw new Error(me?.detail?.message || meText || "Failed to load profile");
-      const p = (me?.profile || me?.data || me) as Profile; setProfile(p);
-      const bizId = p?.id || p?.user_id; if (!bizId) throw new Error("No business/profile id on profile");
-      const list = await tryFetchList(String(bizId)); setReports(list);
-    } catch (e: any) { setErr(e?.message || "Failed to load dashboard"); }
-    finally { setLoading(false); }
+  // Not logged in
+  if (!accessToken) {
+    return (
+      <main className="p-6 max-w-3xl mx-auto">
+        <h1 className="text-2xl font-semibold mb-2">Dashboard</h1>
+        <p className="text-gray-600 mb-6">
+          You’re not logged in. Please sign in to view your dashboard.
+        </p>
+        <Link
+          href="/login"
+          className="inline-block px-4 py-2 rounded-xl bg-black text-white hover:opacity-90"
+        >
+          Go to Login
+        </Link>
+      </main>
+    );
   }
-  useEffect(() => { if (token) fetchProfileAndReports(); /* eslint-disable-next-line */ }, [token, base]);
-
-  async function pollReports(times = 3, delayMs = 1200) {
-    for (let i = 0; i < times; i++) { await new Promise(r=>setTimeout(r, delayMs)); await fetchProfileAndReports(); }
-    setGenStatus("");
-  }
-
-  async function generateReport() {
-    if (!token || !profile) return;
-    setGenStatus("Generating…"); setErr(null);
-    try {
-      const payload: Record<string, unknown> = {}; if (profile.id) payload["business_id"] = profile.id;
-      const res = await fetch(`${base}/reports/generate-business-overview`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
-      });
-      if (res.status === 401) { localStorage.removeItem("enrich_access"); localStorage.removeItem("enrich_user"); router.replace("/login"); return; }
-      const text = await res.text(); let data: any = null; try { data = text ? JSON.parse(text) : null; } catch {}
-      if (!res.ok) throw new Error(data?.detail?.message || text || "Generate failed");
-      const saved = Number(localStorage.getItem("enrich_credits") || "100"); const n = Number.isFinite(saved) ? Math.max(0, saved - 1) : 99;
-      setCredits(n); try { localStorage.setItem("enrich_credits", String(n)); } catch {}
-      setGenStatus("Generated! Updating list…"); await pollReports(3, 1500);
-    } catch (e: any) { setGenStatus(""); setErr(e?.message || "Generate failed"); }
-  }
-
-  // --- while checking auth, show nothing but a spinner ---
-  if (!checked) {
-    return <div style={{ fontFamily: "Inter, ui-sans-serif, system-ui, Arial", maxWidth: 1100, margin: "24px auto", padding: "0 16px" }}>Checking session…</div>;
-  }
-  // if auth check ran and we have no token, the router is already redirecting; keep UI minimal
-  if (!token) return null;
-
-  const transparency = 72;
-  const growthStage = profile?.size ? String(profile.size) : "Seedling";
-  const growthEmoji = "🌱";
 
   return (
-    <div style={S.page}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <h2 style={S.h2}>Dashboard</h2>
-        <span style={{ ...S.tag, marginLeft: "auto" }}>{email ? <>Signed in as <strong>{email}</strong></> : "Signed in"}</span>
-      </div>
+    <main className="p-6 max-w-6xl mx-auto">
+      <header className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold">
+            {profile?.business_name ? `${profile.business_name} — Dashboard` : "Dashboard"}
+          </h1>
+          <p className="text-gray-600">
+            Welcome{profile?.business_name ? `, ${profile.business_name}` : ""}.
+          </p>
+        </div>
 
-      <div style={S.rowCols(4)}>
-        <div style={S.card}>
-          <div style={S.h3 as any}>Transparency Score</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <Donut percent={transparency}/>
-            <div>
-              <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1 }}>{transparency}%</div>
-              <div style={S.sub}>Placeholder metric</div>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/reports/create"
+            className="px-4 py-2 rounded-xl bg-black text-white hover:opacity-90"
+          >
+            Create New Report
+          </Link>
+        </div>
+      </header>
+
+      {err && (
+        <div className="mb-4 rounded-xl bg-red-50 border border-red-200 p-3 text-red-800">
+          {err}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="animate-pulse grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="h-28 bg-gray-100 rounded" />
+          <div className="h-28 bg-gray-100 rounded" />
+          <div className="h-28 bg-gray-100 rounded" />
+        </div>
+      ) : (
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {/* AI Credits */}
+          <div className="rounded-2xl border p-4">
+            <div className="text-sm text-gray-500 mb-1">AI Report Credits</div>
+            <div className="text-3xl font-semibold">
+              {typeof profile?.ai_credits === "number" ? profile.ai_credits : "—"}
+            </div>
+            <div className="mt-2 text-sm text-gray-600">
+              Need more?{" "}
+              <Link href="/billing" className="underline">
+                Manage plan
+              </Link>
             </div>
           </div>
-        </div>
 
-        <div style={S.card}>
-          <div style={S.h3 as any}>Growth Stage</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-            <div style={{ fontSize: 28 }}>{growthEmoji}</div>
-            <div style={{ fontWeight: 700 }}>{growthStage}</div>
+          {/* Transparency (simple ring) */}
+          <div className="rounded-2xl border p-4">
+            <div className="text-sm text-gray-500 mb-2">Transparency</div>
+            <div className="flex items-center gap-4">
+              <div
+                className="relative grid place-items-center rounded-full"
+                style={{
+                  width: 72,
+                  height: 72,
+                  background: `conic-gradient(#000 ${
+                    (profile?.transparency_score || 0) * 3.6
+                  }deg, #e5e7eb 0deg)`,
+                }}
+                aria-label="Transparency score"
+              >
+                <div className="absolute bg-white rounded-full" style={{ width: 54, height: 54 }} />
+                <span className="relative text-sm font-medium">
+                  {typeof profile?.transparency_score === "number"
+                    ? `${profile.transparency_score}%`
+                    : "—"}
+                </span>
+              </div>
+              <div className="text-gray-700 text-sm">
+                Higher = more verified, public data in reports.
+              </div>
+            </div>
           </div>
-          <div style={{ ...S.sub, marginTop: 6 }}>Based on your profile</div>
-        </div>
 
-        <div style={S.card}>
-          <div style={S.h3 as any}>AI Credits</div>
-          <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6 }}>{credits}</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button style={S.btnGhost} onClick={() => { const n = credits + 50; setCredits(n); try{localStorage.setItem("enrich_credits", String(n));}catch{} }}>+50</button>
-            <button style={S.btnGhost} onClick={() => { const n = 100; setCredits(n); try{localStorage.setItem("enrich_credits", String(n));}catch{} }}>Reset</button>
+          {/* Growth Stage */}
+          <div className="rounded-2xl border p-4">
+            <div className="text-sm text-gray-500 mb-1">Growth Stage</div>
+            <div className="text-lg font-semibold capitalize">
+              {growthLabel(profile?.growth_stage)}
+            </div>
+            <div className="mt-1 text-sm text-gray-600">
+              Progress through Initiated → Growing → Enriched.
+            </div>
           </div>
-        </div>
+        </section>
+      )}
 
-        <div style={S.card}>
-          <div style={S.h3 as any}>Create New Report</div>
-          <div style={S.sub}>Business Overview</div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
-            <button style={S.btn} onClick={generateReport}>Generate</button>
-            {genStatus && <span style={S.sub}>{genStatus}</span>}
+      {/* Recommendations widget */}
+      <section className="rounded-2xl border p-4 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm text-gray-500">Recommendations</div>
+            <div className="text-xl font-semibold">
+              {recsCount} pending{" "}
+              {recsCount === 1 ? "suggestion" : "suggestions"}
+            </div>
           </div>
+          <Link href="/recommendations" className="px-3 py-2 rounded-xl border hover:bg-gray-50">
+            View
+          </Link>
         </div>
-      </div>
+        <p className="mt-2 text-sm text-gray-600">
+          We’ll notify you when a report should be updated or new data is requested.
+        </p>
+      </section>
 
-      <div style={{ ...S.card, marginTop: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={S.h3 as any}>Recommendations</div>
-          <span style={S.tag}>🔔 AI-only</span>
-        </div>
-        <ul style={{ margin: 0, paddingLeft: 18, marginTop: 8 }}>
-          <li>Optimize your Google Business Profile description for seasonal keywords.</li>
-          <li>Add recent customer photos to increase engagement.</li>
-          <li>Publish a 30-sec Reels/TikTok about your top tour this week.</li>
-        </ul>
-      </div>
-
-      <div style={{ ...S.card, marginTop: 16 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
-          <div style={S.h3 as any}>Recent Reports</div>
-          <span style={S.sub}>Latest 10</span>
-          <button style={{ ...S.btnGhost, marginLeft: "auto" }} onClick={() => fetchProfileAndReports()}>Refresh</button>
+      {/* Recent Reports */}
+      <section className="mb-10">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">My Reports</h2>
+          <Link href="/reports" className="text-sm underline">
+            View all
+          </Link>
         </div>
 
-        {err && <div style={{ color: "crimson", marginBottom: 12 }}>{err}</div>}
         {loading ? (
-          <div>Loading…</div>
-        ) : reports.length === 0 ? (
-          <div style={{ opacity: 0.7 }}>No reports yet.</div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={S.table}>
-              <thead>
-                <tr>
-                  <th style={{ ...S.th, width: 160 }}>Date</th>
-                  <th style={{ ...S.th, width: 200 }}>Type</th>
-                  <th style={{ ...S.th }}>Files</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reports.slice(0, 10).map((r, i) => {
-                  const created = r.created_at ? new Date(r.created_at as string).toLocaleString() : "—";
-                  const id = (r.id as string) || `row-${i}`;
-                  const baseLinks = (r.links || []) as Link[];
-                  const out: Link[] = []; const seen = new Set<string>();
-                  const add = (label: string, url?: string) => { if (!url) return; const key = url.toLowerCase(); if (seen.has(key)) return; seen.add(key); out.push({ label, url }); };
-                  for (const l of baseLinks) add(l.label, l.url);
-                  const hasLabel = (lbl: string) => out.some(x => x.label.toLowerCase() === lbl.toLowerCase());
-                  if (r.id) {
-                    if (!hasLabel("JSON")) add("JSON", buildLink(`${base}/reports/${r.id}/json`));
-                    if (!hasLabel("Canva CSV") && !hasLabel("CSV")) add("Canva CSV", buildLink(`${base}/reports/${r.id}/csv`, { variant: "canva" }));
-                    if (!hasLabel("PDF")) add("PDF", buildLink(`${base}/reports/${r.id}/pdf`));
-                  }
-                  return (
-                    <tr key={id}>
-                      <td style={S.td}>{created}</td>
-                      <td style={S.td}><span style={S.tag}>{r.report_type || "Report"}</span></td>
-                      <td style={S.td}>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {out.map((l, idx) => {
-                            const internal = sameOrigin(l.url);
-                            const fallbackName =
-                              l.label.toLowerCase().includes("csv") ? `report_${id}.csv` :
-                              l.label.toLowerCase().includes("json") ? `report_${id}.json` :
-                              `report_${id}.pdf`;
-                            return (
-                              <a
-                                key={idx}
-                                href={l.url}
-                                style={S.linkBtn}
-                                onClick={(e) => { if (internal) { e.preventDefault(); openAuthed(l.url, fallbackName); } }}
-                                target={internal ? undefined : "_blank"}
-                                rel={internal ? undefined : "noreferrer"}
-                              >
-                                {l.label}
-                              </a>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            <div className="h-14 bg-gray-100 rounded" />
+            <div className="h-14 bg-gray-100 rounded" />
+            <div className="h-14 bg-gray-100 rounded" />
           </div>
+        ) : reports.length === 0 ? (
+          <div className="rounded-2xl border p-6 text-gray-600">
+            No reports yet.{" "}
+            <Link className="underline" href="/reports/create">
+              Create your first report
+            </Link>
+            .
+          </div>
+        ) : (
+          <ul className="divide-y rounded-2xl border">
+            {reports.slice(0, 6).map((r) => (
+              <li key={r.id} className="flex items-center justify-between p-4">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">
+                    {r.title || `Report ${r.id.slice(0, 8)}`}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {r.status ? `${r.status} • ` : ""}
+                    {r.created_at
+                      ? new Date(r.created_at).toLocaleString()
+                      : "Date unknown"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {r.export_link ? (
+                    <a
+                      href={r.export_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 rounded-xl border hover:bg-gray-50"
+                    >
+                      Download
+                    </a>
+                  ) : null}
+                  <Link
+                    href={`/reports/${r.id}`}
+                    className="px-3 py-1.5 rounded-xl bg-black text-white hover:opacity-90"
+                  >
+                    Open
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
