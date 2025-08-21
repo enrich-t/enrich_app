@@ -1,5 +1,6 @@
 ﻿"use client";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Link = { label: string; url: string };
 type Report = { id?: string; report_type?: string; created_at?: string; links?: Link[]; [k: string]: unknown };
@@ -77,7 +78,7 @@ const S = {
   tag: { padding: "2px 8px", borderRadius: 999, fontSize: 12, background: "#f1f5f9", color: "#0f172a", border: "1px solid #e5e7eb" },
   table: { width: "100%", borderCollapse: "separate" as const, borderSpacing: 0 },
   th: { textAlign: "left" as const, fontSize: 12, textTransform: "uppercase" as const, letterSpacing: 0.4, color: "#475569", borderBottom: "1px solid #e5e7eb", padding: "10px 8px" },
-  td: { fontSize: 14, color: "#0f172a", borderBottom: "1px solid #f1f5f9", padding: "12px 8px", verticalAlign: "middle" as const },
+  td: { fontSize: 14, color: "#0f172a", borderBottom: "1px solid "#f1f5f9", padding: "12px 8px", verticalAlign: "middle" as const },
   linkBtn: { display: "inline-block", padding: "6px 10px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fafafa", fontSize: 13, fontWeight: 600, color: "#0f172a" },
 };
 
@@ -93,9 +94,11 @@ function Donut({ percent = 72, size = 90, stroke = 10, color = "#0ea5e9", track 
   );
 }
 
-/* ---------- main ---------- */
+/* ---------- page ---------- */
 export default function DashboardPage() {
+  const router = useRouter();
   const base = useMemo(() => (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com").replace(/\/$/, ""), []);
+  const [checked, setChecked] = useState(false);       // auth gate state
   const [token, setToken] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -103,24 +106,34 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [genStatus, setGenStatus] = useState<string>("");
-  const [credits, setCredits] = useState<number>(100); // <-- default only; SSR-safe
+  const [credits, setCredits] = useState<number>(100); // hydrate after mount
 
-  // hydrate session + credits AFTER mount (SSR-safe)
+  // --- AUTH GATE (client-only) ---
   useEffect(() => {
     try {
-      setToken(localStorage.getItem("enrich_access"));
-      const u = localStorage.getItem("enrich_user"); setEmail(u ? (JSON.parse(u).email as string) : null);
-      const saved = Number(localStorage.getItem("enrich_credits") || "100");
-      if (Number.isFinite(saved)) setCredits(saved);
-    } catch {}
-  }, []);
+      const t = localStorage.getItem("enrich_access");
+      const uRaw = localStorage.getItem("enrich_user");
+      if (!t) {
+        setChecked(true);
+        router.replace("/login");
+        return;
+      }
+      setToken(t);
+      if (uRaw) {
+        try { const u = JSON.parse(uRaw); setEmail(u?.email ?? null); } catch {}
+      }
+    } finally {
+      setChecked(true);
+    }
+  }, [router]);
 
+  // helper to open same-origin downloads with Bearer
   const sameOrigin = (url: string) => { try { const u = new URL(url); const b = new URL(base); return u.origin === b.origin; } catch { return false; } };
-
   async function openAuthed(url: string, fallbackName?: string) {
     if (!sameOrigin(url) || !token) { window.open(url, "_blank", "noopener,noreferrer"); return; }
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 401) { localStorage.removeItem("enrich_access"); localStorage.removeItem("enrich_user"); router.replace("/login"); return; }
       if (!res.ok) throw new Error((await res.text()) || res.statusText);
       const blob = await res.blob();
       let filename = fallbackName || "download";
@@ -145,6 +158,7 @@ export default function DashboardPage() {
     for (const t of tries) {
       try {
         const res = await fetch(t.url, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.status === 401) { localStorage.removeItem("enrich_access"); localStorage.removeItem("enrich_user"); router.replace("/login"); return []; }
         const text = await res.text();
         if (!res.ok) continue;
         const parsed = text ? JSON.parse(text) : {}; const list = normalizeReports(parsed);
@@ -159,6 +173,7 @@ export default function DashboardPage() {
     setLoading(true); setErr(null);
     try {
       const meRes = await fetch(`${base}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      if (meRes.status === 401) { localStorage.removeItem("enrich_access"); localStorage.removeItem("enrich_user"); router.replace("/login"); return; }
       const meText = await meRes.text(); let me: any = {}; try { me = meText ? JSON.parse(meText) : {}; } catch {}
       if (!meRes.ok) throw new Error(me?.detail?.message || meText || "Failed to load profile");
       const p = (me?.profile || me?.data || me) as Profile; setProfile(p);
@@ -167,7 +182,7 @@ export default function DashboardPage() {
     } catch (e: any) { setErr(e?.message || "Failed to load dashboard"); }
     finally { setLoading(false); }
   }
-  useEffect(() => { fetchProfileAndReports(); /* eslint-disable-next-line */ }, [token, base]);
+  useEffect(() => { if (token) fetchProfileAndReports(); /* eslint-disable-next-line */ }, [token, base]);
 
   async function pollReports(times = 3, delayMs = 1200) {
     for (let i = 0; i < times; i++) { await new Promise(r=>setTimeout(r, delayMs)); await fetchProfileAndReports(); }
@@ -182,12 +197,21 @@ export default function DashboardPage() {
       const res = await fetch(`${base}/reports/generate-business-overview`, {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
       });
+      if (res.status === 401) { localStorage.removeItem("enrich_access"); localStorage.removeItem("enrich_user"); router.replace("/login"); return; }
       const text = await res.text(); let data: any = null; try { data = text ? JSON.parse(text) : null; } catch {}
       if (!res.ok) throw new Error(data?.detail?.message || text || "Generate failed");
-      const n = Math.max(0, credits - 1); setCredits(n); try { localStorage.setItem("enrich_credits", String(n)); } catch {}
+      const saved = Number(localStorage.getItem("enrich_credits") || "100"); const n = Number.isFinite(saved) ? Math.max(0, saved - 1) : 99;
+      setCredits(n); try { localStorage.setItem("enrich_credits", String(n)); } catch {}
       setGenStatus("Generated! Updating list…"); await pollReports(3, 1500);
     } catch (e: any) { setGenStatus(""); setErr(e?.message || "Generate failed"); }
   }
+
+  // --- while checking auth, show nothing but a spinner ---
+  if (!checked) {
+    return <div style={{ fontFamily: "Inter, ui-sans-serif, system-ui, Arial", maxWidth: 1100, margin: "24px auto", padding: "0 16px" }}>Checking session…</div>;
+  }
+  // if auth check ran and we have no token, the router is already redirecting; keep UI minimal
+  if (!token) return null;
 
   const transparency = 72;
   const growthStage = profile?.size ? String(profile.size) : "Seedling";
@@ -197,7 +221,7 @@ export default function DashboardPage() {
     <div style={S.page}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <h2 style={S.h2}>Dashboard</h2>
-        <span style={{ ...S.tag, marginLeft: "auto" }}>v2</span>
+        <span style={{ ...S.tag, marginLeft: "auto" }}>{email ? <>Signed in as <strong>{email}</strong></> : "Signed in"}</span>
       </div>
 
       <div style={S.rowCols(4)}>
