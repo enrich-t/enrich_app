@@ -1,7 +1,10 @@
 export default async function handler(req, res) {
+  // Always reveal the method so we can see what's actually hitting Vercel
+  res.setHeader('X-Debug-Method', req.method || 'UNKNOWN');
+
+  // Accept POST for real login later; right now echo for any method to debug 405s
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).end('Method Not Allowed');
+    return res.status(200).json({ ok: false, note: 'login endpoint reached', receivedMethod: req.method });
   }
 
   const BACKEND = (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/+$/, '');
@@ -19,15 +22,13 @@ export default async function handler(req, res) {
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch {}
 
-  // Single Set-Cookie header -> capture first "name=value"
+  // Capture backend Set-Cookie (single header common case) and store as our HttpOnly cookie
   const sc = upstream.headers.get('set-cookie') || '';
   const m = sc.match(/^\s*([^=;\s]+)=([^;]*)/);
   const pair = m ? \\=\\ : null;
 
   const setCookies = [];
-  if (pair) {
-    setCookies.push(\enrich_bsession=\; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=\\);
-  }
+  if (pair) setCookies.push(\enrich_bsession=\; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=\\);
 
   const access  = data?.access_token ?? data?.accessToken ?? data?.token ?? null;
   const refresh = data?.refresh_token ?? data?.refreshToken ?? null;
