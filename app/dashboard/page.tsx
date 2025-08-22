@@ -21,6 +21,58 @@ function pickBusinessId(me: any): string | null {
   return null;
 }
 
+// Try to locate an array of reports in a flexible response
+function extractReports(payload: any): Report[] | null {
+  if (!payload) return null;
+
+  // If it's already an array
+  if (Array.isArray(payload)) return payload as Report[];
+
+  // Common top-level keys
+  const candidates = [
+    payload.data,
+    payload.reports,
+    payload.items,
+    payload.results,
+    payload.rows,
+    payload.records,
+    payload.list,
+    payload.entries,
+
+    // Nested under data
+    payload?.data?.reports,
+    payload?.data?.items,
+    payload?.data?.results,
+    payload?.data?.rows,
+    payload?.data?.records,
+    payload?.data?.list,
+    payload?.data?.entries,
+  ];
+
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c as Report[];
+  }
+
+  // As a last resort: recursively search for the first array of objects
+  const visited = new Set<any>();
+  function dfs(obj: any, depth = 0): Report[] | null {
+    if (!obj || typeof obj !== "object" || depth > 4 || visited.has(obj)) return null;
+    visited.add(obj);
+    for (const key of Object.keys(obj)) {
+      const val = obj[key];
+      if (Array.isArray(val)) {
+        if (val.length === 0) continue;
+        if (typeof val[0] === "object") return val as Report[];
+      } else if (val && typeof val === "object") {
+        const found = dfs(val, depth + 1);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  return dfs(payload);
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [reports, setReports] = useState<Report[]>([]);
@@ -30,6 +82,7 @@ export default function DashboardPage() {
   const [manualId, setManualId] = useState<string>("");
   const [meRaw, setMeRaw] = useState<any>(null);
   const [attempts, setAttempts] = useState<string[]>([]);
+  const [listResponseSample, setListResponseSample] = useState<any>(null);
   const pushAttempt = (msg: string) => setAttempts(prev => [...prev, msg]);
 
   async function tryList(id: string | null) {
@@ -47,12 +100,14 @@ export default function DashboardPage() {
       try {
         pushAttempt(`GET ${p}`);
         const data = await apiFetch<any>(p, {}, true);
-        const arr = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : null;
+        const arr = extractReports(data);
         if (arr) {
+          setListResponseSample(data);
           pushAttempt(`✅ OK ${p} → ${arr.length} reports`);
           return arr as Report[];
         } else {
-          pushAttempt(`⚠️ OK ${p} but response not array`);
+          setListResponseSample(data);
+          pushAttempt(`⚠️ OK ${p} but response not array (showing sample below)`);
         }
       } catch (e: any) {
         pushAttempt(`❌ ${p} → ${e?.message ?? String(e)}`);
@@ -65,6 +120,7 @@ export default function DashboardPage() {
     setLoading(true);
     setErr(null);
     setAttempts([]);
+    setListResponseSample(null);
     try {
       pushAttempt("GET /auth/me");
       const me = await apiFetch<any>("/auth/me", {}, true);
@@ -142,6 +198,7 @@ export default function DashboardPage() {
     try {
       setErr(null);
       setAttempts([]);
+      setListResponseSample(null);
       setBusinessId(manualId.trim());
       const list = await tryList(manualId.trim());
       setReports(Array.isArray(list) ? list : []);
@@ -184,6 +241,15 @@ export default function DashboardPage() {
 {attempts.join("\n")}
         </pre>
       </details>
+
+      {listResponseSample && (
+        <details style={{ marginBottom:16 }}>
+          <summary>List response sample (first successful/OK response)</summary>
+          <pre style={{ whiteSpace:"pre-wrap", wordBreak:"break-word", background:"#f7f7f7", padding:12, borderRadius:8 }}>
+{JSON.stringify(listResponseSample, null, 2)}
+          </pre>
+        </details>
+      )}
 
       <details style={{ marginBottom:16 }}>
         <summary>/auth/me raw response (debug)</summary>
