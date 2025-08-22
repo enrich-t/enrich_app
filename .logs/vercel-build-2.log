@@ -1,0 +1,69 @@
+﻿Vercel CLI 46.0.2
+WARN! Build not running on Vercel. System environment variables will not be available.
+Installing dependencies...
+
+up to date in 1s
+Detected Next.js version: 15.4.6
+Running "npm run build"
+
+> enrich_app@0.1.0 build
+> next build
+
+ ΓÜá Invalid next.config.js options detected: 
+ ΓÜá     Unrecognized key(s) in object: 'appDir' at "experimental"
+ ΓÜá See more info here: https://nextjs.org/docs/messages/invalid-next-config
+   Γû▓ Next.js 15.4.6
+   - Environments: .env.local
+   - Experiments (use with caution):
+     Γ£ô appDir
+
+   Creating an optimized production build ...
+Failed to compile.
+
+./app/login/page.tsx
+Error:   [31mx[0m The "use client" directive must be placed before other expressions. Move it to the top of the file to resolve this issue.
+   ,-[[36;1;4mC:\Users\Mel\OneDrive\Code\Enrich_Platform\enrich_app\app\login\page.tsx[0m:2:1]
+ [2m1[0m | export const dynamic = "force-dynamic";
+ [2m2[0m | "use client";
+   : [35;1m^^^^^^^^^^^^^[0m
+ [2m3[0m | 
+ [2m4[0m | import React, { useState } from "react";
+ [2m5[0m | import { useRouter } from "next/navigation";
+   `----
+  [31mx[0m You're importing a component that needs `useState`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+  [31m|[0m
+  [31m|[0m  Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+  [31m|[0m
+
+   ,-[[36;1;4mC:\Users\Mel\OneDrive\Code\Enrich_Platform\enrich_app\app\login\page.tsx[0m:4:1]
+ [2m1[0m | export const dynamic = "force-dynamic";
+ [2m2[0m | "use client";
+ [2m3[0m | 
+ [2m4[0m | import React, { useState } from "react";
+   : [35;1m                ^^^^^^^^[0m
+ [2m5[0m | import { useRouter } from "next/navigation";
+ [2m6[0m | 
+ [2m7[0m | export default function LoginPage() {
+   `----
+  [31mx[0m You're importing a component that needs `useRouter`. This React Hook only works in a Client Component. To fix, mark the file (or its parent) with the `"use client"` directive.
+  [31m|[0m
+  [31m|[0m  Learn more: https://nextjs.org/docs/app/api-reference/directives/use-client
+  [31m|[0m
+
+   ,-[[36;1;4mC:\Users\Mel\OneDrive\Code\Enrich_Platform\enrich_app\app\login\page.tsx[0m:5:1]
+ [2m2[0m | "use client";
+ [2m3[0m | 
+ [2m4[0m | import React, { useState } from "react";
+ [2m5[0m | import { useRouter } from "next/navigation";
+   : [35;1m         ^^^^^^^^^[0m
+ [2m6[0m | 
+ [2m7[0m | export default function LoginPage() {
+ [2m8[0m |   const router = useRouter();
+   `----
+
+Import trace for requested module:
+./app/login/page.tsx
+
+
+> Build failed because of webpack errors
+Error: Command "npm run build" exited with 1
