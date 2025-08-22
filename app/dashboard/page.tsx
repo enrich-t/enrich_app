@@ -7,11 +7,10 @@ type Report = { id: string; report_type?: string; created_at?: string; status?: 
 
 function pickBusinessId(me: any): string | null {
   if (!me) return null;
-
-  // Your /auth/me shows: { ok: true, profile: { id: "<business_profile_id>", ... } }
+  // Your /auth/me example: { ok:true, profile:{ id:"...", ... } }
   if (me.profile && typeof me.profile.id === "string") return me.profile.id;
 
-  // Extra fallbacks (harmless)
+  // Harmless fallbacks
   if (typeof me.business_id === "string") return me.business_id;
   if (typeof me.businessId === "string") return me.businessId;
   if (me.business && typeof me.business.id === "string") return me.business.id;
@@ -19,7 +18,6 @@ function pickBusinessId(me: any): string | null {
   if (typeof me.business_profile_id === "string") return me.business_profile_id;
   if (me.business_profile && typeof me.business_profile.id === "string") return me.business_profile.id;
   if (Array.isArray(me.businesses) && me.businesses[0] && typeof me.businesses[0].id === "string") return me.businesses[0].id;
-
   return null;
 }
 
@@ -31,39 +29,44 @@ export default function DashboardPage() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [manualId, setManualId] = useState<string>("");
   const [meRaw, setMeRaw] = useState<any>(null);
-  const [lastCall, setLastCall] = useState<string>("");
+  const [attempts, setAttempts] = useState<string[]>([]);
+  const pushAttempt = (msg: string) => setAttempts(prev => [...prev, msg]);
 
   async function tryList(id: string | null) {
-    // Primary: /reports/list/{business_id}
+    const paths: string[] = [];
     if (id) {
-      try {
-        setLastCall(`/reports/list/${id}`);
-        const list1 = await apiFetch<Report[]>(`/reports/list/${id}`, {}, true);
-        if (Array.isArray(list1)) return list1;
-      } catch (e: any) {
-        // keep trying
-      }
-      // Secondary: /reports/list?business_id=...
-      try {
-        setLastCall(`/reports/list?business_id=${id}`);
-        const list2 = await apiFetch<Report[]>(`/reports/list?business_id=${id}`, {}, true);
-        if (Array.isArray(list2)) return list2;
-      } catch (e: any) {}
+      paths.push(`/reports/list/${id}`);
+      paths.push(`/reports/list?business_id=${id}`);
+      paths.push(`/reports/${id}`);
+      paths.push(`/reports?business_id=${id}`);
     }
-    // Tertiary: /reports/list (auth implied)
-    try {
-      setLastCall(`/reports/list`);
-      const list3 = await apiFetch<Report[]>(`/reports/list`, {}, true);
-      if (Array.isArray(list3)) return list3;
-    } catch (e: any) {}
+    paths.push(`/reports/list`);
+    paths.push(`/reports`);
 
+    for (const p of paths) {
+      try {
+        pushAttempt(`GET ${p}`);
+        const data = await apiFetch<any>(p, {}, true);
+        const arr = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : null;
+        if (arr) {
+          pushAttempt(`✅ OK ${p} → ${arr.length} reports`);
+          return arr as Report[];
+        } else {
+          pushAttempt(`⚠️ OK ${p} but response not array`);
+        }
+      } catch (e: any) {
+        pushAttempt(`❌ ${p} → ${e?.message ?? String(e)}`);
+      }
+    }
     throw new Error("Could not load reports from any known endpoint.");
   }
 
   async function load() {
     setLoading(true);
     setErr(null);
+    setAttempts([]);
     try {
+      pushAttempt("GET /auth/me");
       const me = await apiFetch<any>("/auth/me", {}, true);
       setMeRaw(me);
       const found = pickBusinessId(me);
@@ -88,9 +91,11 @@ export default function DashboardPage() {
 
   const onGenerate = async () => {
     setErr(null);
+    setAttempts([]);
     try {
       let id = businessId;
       if (!id) {
+        pushAttempt("GET /auth/me (to fetch id)");
         const me = await apiFetch<any>("/auth/me", {}, true);
         setMeRaw(me);
         id = pickBusinessId(me);
@@ -98,12 +103,31 @@ export default function DashboardPage() {
       }
       if (!id) throw new Error("No business_id available to generate report.");
 
-      // Your backend expects { business_id } (from our past setup)
-      setLastCall("POST /reports/generate-business-overview");
-      await apiFetch(`/reports/generate-business-overview`, {
-        method: "POST",
-        body: JSON.stringify({ business_id: id }),
-      }, true);
+      const postVariants: { path: string; body: Record<string, unknown> }[] = [
+        { path: "/reports/generate-business-overview", body: { business_id: id } },
+        { path: "/reports/generate", body: { business_id: id } },
+        { path: "/reports/create", body: { business_id: id } },
+        { path: "/reports", body: { business_id: id, action: "generate" } },
+        { path: `/reports/generate-business-overview/${id}`, body: {} },
+        { path: `/reports/generate/${id}`, body: {} },
+        // Alternate field names if your backend expects them:
+        { path: "/reports/generate", body: { id } },
+        { path: "/reports/generate", body: { business_profile_id: id } },
+      ];
+
+      let generated = false;
+      for (const v of postVariants) {
+        try {
+          pushAttempt(`POST ${v.path} body=${JSON.stringify(v.body)}`);
+          await apiFetch(v.path, { method: "POST", body: JSON.stringify(v.body) }, true);
+          pushAttempt(`✅ OK ${v.path}`);
+          generated = true;
+          break;
+        } catch (e: any) {
+          pushAttempt(`❌ ${v.path} → ${e?.message ?? String(e)}`);
+        }
+      }
+      if (!generated) throw new Error("All generate endpoints failed.");
 
       const list = await tryList(id);
       setReports(list);
@@ -117,6 +141,7 @@ export default function DashboardPage() {
     if (!manualId.trim()) return;
     try {
       setErr(null);
+      setAttempts([]);
       setBusinessId(manualId.trim());
       const list = await tryList(manualId.trim());
       setReports(Array.isArray(list) ? list : []);
@@ -150,8 +175,15 @@ export default function DashboardPage() {
       )}
 
       <div style={{ marginBottom:12 }}>
-        <small><strong>Business ID:</strong> {businessId ?? "unknown"} &nbsp; | &nbsp; <strong>Last call:</strong> {lastCall || "—"}</small>
+        <small><strong>Business ID:</strong> {businessId ?? "unknown"}</small>
       </div>
+
+      <details style={{ marginBottom:16 }}>
+        <summary>Network attempts (click to expand)</summary>
+        <pre style={{ whiteSpace:"pre-wrap", wordBreak:"break-word", background:"#f7f7f7", padding:12, borderRadius:8 }}>
+{attempts.join("\n")}
+        </pre>
+      </details>
 
       <details style={{ marginBottom:16 }}>
         <summary>/auth/me raw response (debug)</summary>
