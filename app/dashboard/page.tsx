@@ -8,27 +8,17 @@ type Report = { id: string; report_type?: string; created_at?: string; status?: 
 function pickBusinessId(me: any): string | null {
   if (!me) return null;
 
-  // Obvious names
+  // Your /auth/me shows: { ok: true, profile: { id: "<business_profile_id>", ... } }
+  if (me.profile && typeof me.profile.id === "string") return me.profile.id;
+
+  // Extra fallbacks (harmless)
   if (typeof me.business_id === "string") return me.business_id;
   if (typeof me.businessId === "string") return me.businessId;
-
-  // Nested
   if (me.business && typeof me.business.id === "string") return me.business.id;
   if (me.profile && typeof me.profile.business_id === "string") return me.profile.business_id;
-  if (me.profile && typeof me.profile.id === "string" && (me.profile.type === "business" || me.profile.kind === "business"))
-    return me.profile.id;
-
-  // Alternate naming
   if (typeof me.business_profile_id === "string") return me.business_profile_id;
   if (me.business_profile && typeof me.business_profile.id === "string") return me.business_profile.id;
-
-  // First of array
-  if (Array.isArray(me.businesses) && me.businesses[0] && typeof me.businesses[0].id === "string")
-    return me.businesses[0].id;
-
-  // Sometimes /auth/me IS the business_profile itself:
-  if (typeof me.id === "string" && (me.table === "business_profiles" || me.resource === "business_profile" || me.kind === "business"))
-    return me.id;
+  if (Array.isArray(me.businesses) && me.businesses[0] && typeof me.businesses[0].id === "string") return me.businesses[0].id;
 
   return null;
 }
@@ -44,26 +34,29 @@ export default function DashboardPage() {
   const [lastCall, setLastCall] = useState<string>("");
 
   async function tryList(id: string | null) {
-    // Try several list patterns
-    // 1) /reports/list/{id}
+    // Primary: /reports/list/{business_id}
     if (id) {
       try {
         setLastCall(`/reports/list/${id}`);
         const list1 = await apiFetch<Report[]>(`/reports/list/${id}`, {}, true);
         if (Array.isArray(list1)) return list1;
-      } catch {}
+      } catch (e: any) {
+        // keep trying
+      }
+      // Secondary: /reports/list?business_id=...
       try {
         setLastCall(`/reports/list?business_id=${id}`);
         const list2 = await apiFetch<Report[]>(`/reports/list?business_id=${id}`, {}, true);
         if (Array.isArray(list2)) return list2;
-      } catch {}
+      } catch (e: any) {}
     }
-    // 2) /reports/list (auth implied)
+    // Tertiary: /reports/list (auth implied)
     try {
       setLastCall(`/reports/list`);
       const list3 = await apiFetch<Report[]>(`/reports/list`, {}, true);
       if (Array.isArray(list3)) return list3;
-    } catch {}
+    } catch (e: any) {}
+
     throw new Error("Could not load reports from any known endpoint.");
   }
 
@@ -74,7 +67,8 @@ export default function DashboardPage() {
       const me = await apiFetch<any>("/auth/me", {}, true);
       setMeRaw(me);
       const found = pickBusinessId(me);
-      if (found) setBusinessId(found);
+      if (!found) throw new Error("No business_id found on /auth/me response.");
+      setBusinessId(found);
       const list = await tryList(found);
       setReports(list);
     } catch (e: any) {
@@ -95,7 +89,6 @@ export default function DashboardPage() {
   const onGenerate = async () => {
     setErr(null);
     try {
-      // ensure we have an id
       let id = businessId;
       if (!id) {
         const me = await apiFetch<any>("/auth/me", {}, true);
@@ -103,32 +96,16 @@ export default function DashboardPage() {
         id = pickBusinessId(me);
         if (id) setBusinessId(id);
       }
-      // attempt variants
-      // A) { business_id }
-      try {
-        setLastCall(`POST /reports/generate-business-overview (business_id)`);
-        await apiFetch(`/reports/generate-business-overview`, {
-          method: "POST",
-          body: JSON.stringify({ business_id: id }),
-        }, true);
-      } catch {
-        // B) { id }
-        try {
-          setLastCall(`POST /reports/generate-business-overview (id)`);
-          await apiFetch(`/reports/generate-business-overview`, {
-            method: "POST",
-            body: JSON.stringify({ id }),
-          }, true);
-        } catch {
-          // C) empty body (auth implied)
-          setLastCall(`POST /reports/generate-business-overview (empty body)`);
-          await apiFetch(`/reports/generate-business-overview`, {
-            method: "POST",
-            body: JSON.stringify({}),
-          }, true);
-        }
-      }
-      const list = await tryList(id ?? null);
+      if (!id) throw new Error("No business_id available to generate report.");
+
+      // Your backend expects { business_id } (from our past setup)
+      setLastCall("POST /reports/generate-business-overview");
+      await apiFetch(`/reports/generate-business-overview`, {
+        method: "POST",
+        body: JSON.stringify({ business_id: id }),
+      }, true);
+
+      const list = await tryList(id);
       setReports(list);
       alert("Report generation triggered.");
     } catch (e: any) {
