@@ -1,24 +1,16 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import AppHeader from '../../components/AppHeader';
 import { ToastProvider, useToast } from '../../components/Toast';
 import ReportsTable, { Report } from '../../components/ReportsTable';
 import GenerateReportButton from '../../components/GenerateReportButton';
+import { authHeaders, getToken, getBusinessId } from '../../components/auth';
 
 type ApiListResponse = Report[];
 
 const BUSINESS_ID_ENV = process.env.NEXT_PUBLIC_BUSINESS_ID;
-
-/**
- * Note on auth:
- * - If you store a token in localStorage under "auth_token", we will attach it to requests.
- * - If your rewrite injects the token automatically, this header will be ignored safely by your backend.
- */
-function authHeaders(): HeadersInit {
-  if (typeof window === 'undefined') return {};
-  const token = window.localStorage.getItem('auth_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 async function fetchReports(businessId: string, signal?: AbortSignal): Promise<ApiListResponse> {
   const res = await fetch(`/api/reports/list/${encodeURIComponent(businessId)}`, {
@@ -40,29 +32,38 @@ async function fetchReports(businessId: string, signal?: AbortSignal): Promise<A
 export default function DashboardPage() {
   return (
     <ToastProvider>
+      <AppHeader />
       <DashboardContent />
     </ToastProvider>
   );
 }
 
 function DashboardContent() {
+  const router = useRouter();
   const { push } = useToast();
+
   const [businessId, setBusinessId] = useState<string>('');
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Resolve businessId
+  // Auth guard: if no token in localStorage, send to /login
   useEffect(() => {
-    // Prefer env; fallback to localStorage
+    const token = getToken();
+    if (!token) {
+      router.replace('/login');
+    }
+  }, [router]);
+
+  // Resolve businessId (env > localStorage)
+  useEffect(() => {
     const fromEnv = BUSINESS_ID_ENV?.trim() ?? '';
     if (fromEnv) {
       setBusinessId(fromEnv);
       return;
     }
-    if (typeof window !== 'undefined') {
-      const fromLS = window.localStorage.getItem('business_id') ?? '';
-      if (fromLS) setBusinessId(fromLS);
-    }
+    const fromLS = getBusinessId() ?? '';
+    if (fromLS) setBusinessId(fromLS);
+    else setBusinessId(''); // stay empty; button will warn
   }, []);
 
   // Initial load + refresh on businessId change
@@ -110,10 +111,9 @@ function DashboardContent() {
   const onGenerate = useMemo(
     () => async () => {
       if (!businessId) {
-        push({ title: 'Missing Business ID', description: 'Set NEXT_PUBLIC_BUSINESS_ID or localStorage.business_id', tone: 'error' });
+        push({ title: 'Missing Business ID', description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id', tone: 'error' });
         return;
       }
-      // Call your existing endpoint via /api rewrite
       const res = await fetch('/api/reports/generate-business-overview', {
         method: 'POST',
         headers: {
