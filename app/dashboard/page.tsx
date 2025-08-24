@@ -1,155 +1,194 @@
-﻿"use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiFetch } from "../../lib/api";
+'use client';
 
-type MeProfile = { id: string; business_name?: string };
-type MeResponse = { ok: boolean; profile: MeProfile };
-type Report = {
-  id: string;
-  business_id: string;
-  report_type: string;
-  content?: Record<string, unknown>;
-  created_at?: string;
-  status?: "pending" | "generated" | string;
-  csv_url?: string | null;
-  json_url?: string | null;
-  pdf_url?: string | null;
-};
+import React, { useEffect, useMemo, useState } from 'react';
+import { ToastProvider, useToast } from '@/components/Toast';
+import ReportsTable, { Report } from '@/components/ReportsTable';
+import GenerateReportButton from '@/components/GenerateReportButton';
 
-function fmt(iso?: string) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleString();
+type ApiListResponse = Report[];
+
+const BUSINESS_ID_ENV = process.env.NEXT_PUBLIC_BUSINESS_ID;
+
+/**
+ * Note on auth:
+ * - If you store a token in localStorage under "auth_token", we will attach it to requests.
+ * - If your rewrite injects the token automatically, this header will be ignored safely by your backend.
+ */
+function authHeaders(): HeadersInit {
+  if (typeof window === 'undefined') return {};
+  const token = window.localStorage.getItem('auth_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function fetchReports(businessId: string, signal?: AbortSignal): Promise<ApiListResponse> {
+  const res = await fetch(`/api/reports/list/${encodeURIComponent(businessId)}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    signal,
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => res.statusText);
+    throw new Error(msg || `Failed to load reports (HTTP ${res.status}).`);
+  }
+  return res.json();
 }
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [me, setMe] = useState<MeResponse | null>(null);
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const businessId = useMemo(() => me?.profile?.id ?? null, [me]);
-  const pollTimer = useRef<NodeJS.Timeout | null>(null);
-  const pollUntil = useRef<number>(0);
-
-  const fetchList = useCallback(async (id: string) => {
-    const res = await apiFetch<{ ok: boolean; reports: Report[] }>(`/reports/list/${id}`, {}, true);
-    return Array.isArray(res.reports) ? res.reports : [];
-  }, []);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-      if (!token) { router.replace("/login"); return; }
-
-      const meRes = await apiFetch<MeResponse>("/auth/me", {}, true);
-      setMe(meRes);
-      const id = meRes?.profile?.id;
-      if (!id) throw new Error("Could not determine business_id from /auth/me");
-
-      const arr = await fetchList(id);
-      setReports(arr);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-      setReports([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [router, fetchList]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const startPolling = useCallback((id: string) => {
-    if (pollTimer.current) clearInterval(pollTimer.current as unknown as number);
-    pollUntil.current = Date.now() + 2 * 60 * 1000; // 2 minutes
-    pollTimer.current = setInterval(async () => {
-      if (Date.now() > pollUntil.current) {
-        if (pollTimer.current) clearInterval(pollTimer.current as unknown as number);
-        return;
-      }
-      const arr = await fetchList(id);
-      setReports(arr);
-      const anyPending = arr.some(r => (r.status ?? "").toLowerCase() === "pending");
-      if (!anyPending && pollTimer.current) {
-        clearInterval(pollTimer.current as unknown as number);
-      }
-    }, 5000);
-  }, [fetchList]);
-
-  const onGenerate = useCallback(async () => {
-    setErr(null);
-    try {
-      if (!businessId) throw new Error("No business_id available.");
-      await apiFetch(`/reports/generate-business-overview`, {
-        method: "POST",
-        body: JSON.stringify({ business_id: businessId }),
-      }, true);
-
-      const arr = await fetchList(businessId);
-      setReports(arr);
-      startPolling(businessId); // keep refreshing while pending
-      alert("Report generation triggered.");
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }, [businessId, fetchList, startPolling]);
-
-  const onLogout = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    localStorage.removeItem("access_token");
-    router.push("/login");
-  }, [router]);
-
-  if (loading) return <p>Loading dashboard…</p>;
-
   return (
-    <>
-      <h1>Dashboard</h1>
-
-      <div style={{ display:"flex", gap:12, marginBottom:16, flexWrap:"wrap" }}>
-        <button onClick={onGenerate} disabled={!businessId}>Generate Business Overview</button>
-        <a href="#" onClick={onLogout}>Log out</a>
-      </div>
-
-      {err && (
-        <div style={{ border:"1px solid #e5b3b3", background:"#fff5f5", padding:12, borderRadius:8, marginBottom:16 }}>
-          <strong>Heads up:</strong> {err}
-        </div>
-      )}
-
-      <div style={{ marginBottom:12 }}>
-        <small><strong>Business ID:</strong> {businessId ?? "unknown"}</small>
-      </div>
-
-      <h2>Previous Reports</h2>
-      {reports.length === 0 ? (
-        <p>No reports yet.</p>
-      ) : (
-        <ul style={{ paddingLeft:16 }}>
-          {reports.map((r) => {
-            const isPending = (r.status ?? "").toLowerCase() === "pending";
-            return (
-              <li key={r.id} style={{ marginBottom:8 }}>
-                <div>
-                  <strong>{r.report_type || "Report"}</strong> •
-                  {" "}{r.status ?? "unknown"} • {fmt(r.created_at)}
-                </div>
-                {!isPending && (
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                    {r.csv_url && <a href={r.csv_url} target="_blank" rel="noreferrer">CSV</a>}
-                    {r.json_url && <a href={r.json_url} target="_blank" rel="noreferrer">JSON</a>}
-                    {r.pdf_url && <a href={r.pdf_url} target="_blank" rel="noreferrer">PDF</a>}
-                  </div>
-                )}
-                {isPending && <small>We’ll refresh automatically…</small>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </>
+    <ToastProvider>
+      <DashboardContent />
+    </ToastProvider>
   );
 }
+
+function DashboardContent() {
+  const { push } = useToast();
+  const [businessId, setBusinessId] = useState<string>('');
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Resolve businessId
+  useEffect(() => {
+    // Prefer env; fallback to localStorage
+    const fromEnv = BUSINESS_ID_ENV?.trim() ?? '';
+    if (fromEnv) {
+      setBusinessId(fromEnv);
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      const fromLS = window.localStorage.getItem('business_id') ?? '';
+      if (fromLS) setBusinessId(fromLS);
+    }
+  }, []);
+
+  // Initial load + refresh on businessId change
+  useEffect(() => {
+    if (!businessId) {
+      setLoading(false);
+      return;
+    }
+    const ac = new AbortController();
+    setLoading(true);
+    fetchReports(businessId, ac.signal)
+      .then((data) => setReports(data ?? []))
+      .catch((err) => {
+        console.error(err);
+        push({
+          title: 'Could not load reports',
+          description: err?.message || 'Please try again.',
+          tone: 'error',
+        });
+      })
+      .finally(() => setLoading(false));
+
+    return () => ac.abort();
+  }, [businessId, push]);
+
+  const onRefresh = useMemo(
+    () => async () => {
+      if (!businessId) return;
+      try {
+        const data = await fetchReports(businessId);
+        setReports(data ?? []);
+        push({ title: 'Refreshed', description: 'Report list updated.' });
+      } catch (err: any) {
+        console.error(err);
+        push({
+          title: 'Refresh failed',
+          description: err?.message || 'Please try again.',
+          tone: 'error',
+        });
+      }
+    },
+    [businessId, push]
+  );
+
+  const onGenerate = useMemo(
+    () => async () => {
+      if (!businessId) {
+        push({ title: 'Missing Business ID', description: 'Set NEXT_PUBLIC_BUSINESS_ID or localStorage.business_id', tone: 'error' });
+        return;
+      }
+      // Call your existing endpoint via /api rewrite
+      const res = await fetch('/api/reports/generate-business-overview', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ business_id: businessId }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => res.statusText);
+        throw new Error(msg || `Generate failed (HTTP ${res.status}).`);
+      }
+      return res.json();
+    },
+    [businessId, push]
+  );
+
+  return (
+    <main style={styles.main}>
+      <header style={styles.header}>
+        <div>
+          <h1 style={styles.h1}>Dashboard</h1>
+          <p style={styles.subtitle}>Reports overview & quick actions</p>
+        </div>
+        <GenerateReportButton onGenerate={onGenerate} onDone={onRefresh} />
+      </header>
+
+      <section style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h2 style={styles.h2}>Reports</h2>
+          <button onClick={onRefresh} style={styles.secondaryBtn} aria-label="Refresh reports">
+            Refresh
+          </button>
+        </div>
+        <ReportsTable reports={reports} loading={loading} />
+      </section>
+    </main>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  main: {
+    padding: '24px',
+    maxWidth: 1100,
+    margin: '0 auto',
+    display: 'grid',
+    gap: 24,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  h1: { margin: 0, fontSize: 28, fontWeight: 700 },
+  h2: { margin: 0, fontSize: 20, fontWeight: 600 },
+  subtitle: { margin: 0, opacity: 0.75 },
+  card: {
+    background: 'var(--card-bg, #111213)',
+    border: '1px solid var(--card-bd, #2a2a2a)',
+    borderRadius: 12,
+    padding: 16,
+  },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  secondaryBtn: {
+    padding: '8px 12px',
+    borderRadius: 8,
+    border: '1px solid #3a3a3a',
+    background: 'transparent',
+    color: 'inherit',
+    cursor: 'pointer',
+  },
+};
