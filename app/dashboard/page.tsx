@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ToastProvider, useToast } from '@/components/Toast';
-import ReportsTable, { Report } from '@/components/ReportsTable';
-import GenerateReportButton from '@/components/GenerateReportButton';
+import { ToastProvider, useToast } from '../../components/Toast';
+import ReportsTable, { Report } from '../../components/ReportsTable';
+import GenerateReportButton from '../../components/GenerateReportButton';
 
 type ApiListResponse = Report[];
 
