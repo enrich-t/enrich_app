@@ -166,62 +166,75 @@ function DashboardContent() {
   );
 
     const onGenerate = useMemo(
-    () => async () => {
-      const token = getToken();
-      if (!token) {
-        push({ title: 'Not logged in', description: 'Please log in again.', tone: 'error' });
-        router.replace('/login');
-        return;
-      }
-      if (!businessId) {
-        push({
-          title: 'Missing Business ID',
-          description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id',
-          tone: 'error',
-        });
-        return;
-      }
-
-      // Try to enrich payload with business_name from /auth/me (if available)
-      let business_name: string | undefined = undefined;
-      try {
-        const meRes = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
-        if (meRes.ok) {
-          const me = await meRes.json().catch(() => null);
-          business_name =
-            me?.profile?.business_name ||
-            me?.data?.business_name ||
-            me?.business_name ||
-            undefined;
-        }
-      } catch {
-        // ignore – purely best-effort
-      }
-
-      const payload: Record<string, any> = {
-        business_id: String(businessId),
-        report_type: 'business_overview',
-      };
-      if (business_name) payload.business_name = business_name;
-
-      const h: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
-      const res = await fetch('/api/reports/generate-business-overview', {
-        method: 'POST',
-        headers: h,
-        body: JSON.stringify(payload),
+  () => async () => {
+    const token = getToken();
+    if (!token) {
+      push({ title: 'Not logged in', description: 'Please log in again.', tone: 'error' });
+      router.replace('/login');
+      return;
+    }
+    if (!businessId) {
+      push({
+        title: 'Missing Business ID',
+        description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id',
+        tone: 'error',
       });
-      const body = await res.text();
+      return;
+    }
 
-      if (!res.ok) {
-        const snippet = body?.slice(0, 300) || res.statusText;
-        throw new Error(`${res.status} ${res.statusText}: ${snippet}`);
+    // Best-effort: fetch profile to include business name and requesting user id
+    let business_name: string | undefined;
+    let requested_by: string | undefined;
+    try {
+      const meRes = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+      if (meRes.ok) {
+        const me = await meRes.json().catch(() => null);
+        const prof = me?.profile ?? me?.data ?? me ?? {};
+        business_name = prof?.business_name ?? prof?.businessName ?? undefined;
+        requested_by = prof?.id ?? prof?.user_id ?? prof?.userId ?? undefined;
       }
+    } catch {
+      /* ignore best-effort */
+    }
 
-      push({ title: 'Report requested', description: 'We’ll refresh your list shortly.' });
-      await onRefresh();
-    },
-    [businessId, push, router, onRefresh]
-  );
+    // Universal payload: include snake + camel keys to satisfy various backends
+    const payload: Record<string, any> = {
+      business_id: String(businessId),
+      businessId: String(businessId),
+      report_type: 'business_overview',
+      reportType: 'business_overview',
+      ...(business_name ? { business_name, businessName: business_name } : {}),
+      ...(requested_by ? { requested_by, requestedBy: requested_by } : {}),
+      source: 'dashboard',
+    };
+
+    const idempotencyKey = `dash-${businessId}-${Date.now()}`;
+
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'Idempotency-Key': idempotencyKey,
+    };
+
+    const res = await fetch('/api/reports/generate-business-overview', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const bodyText = await res.text();
+    if (!res.ok) {
+      // Show the most helpful snippet we can get from the server
+      const snippet = bodyText?.slice(0, 500) || res.statusText || 'Unknown error';
+      throw new Error(`${res.status} ${res.statusText}: ${snippet}`);
+    }
+
+    push({ title: 'Report requested', description: 'We’ll refresh your list shortly.' });
+    await onRefresh();
+  },
+  [businessId, push, router, onRefresh]
+);
 
   // Diagnostics (build headers concretely)
   const runDiagnostics = useMemo(
