@@ -2,7 +2,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { BUSINESS_ID_KEY, extractBusinessId, extractToken, safeJson, setBusinessId, setToken } from '../../components/auth';
+import { extractBusinessId, extractToken, safeJson, setBusinessId, setToken } from '../../components/auth';
 import { ToastProvider, useToast } from '../../components/Toast';
 
 export default function LoginPage() {
@@ -34,15 +34,25 @@ function LoginContent() {
       if (!res.ok) {
         throw new Error(typeof data === 'string' ? data : data?.message || 'Login failed');
       }
+
       const token = extractToken(data);
-      if (token) setToken(token);
+      if (!token) {
+        console.warn('[login] No string token in response. Raw:', data);
+        throw new Error('Login succeeded, but no token was returned.');
+      }
+      setToken(token);
 
       let bizId = extractBusinessId(data);
-      if (!bizId && token) {
-        const meRes = await fetch('/api/auth/me', { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
+      if (!bizId) {
+        // Try /auth/me with the token we just stored
+        const meRes = await fetch('/api/auth/me', {
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        });
         const me = await safeJson(meRes);
         if (meRes.ok) {
-          bizId = me?.business_id || me?.data?.business_id || me?.profile?.business_id || null;
+          bizId = extractBusinessId(me);
+        } else {
+          console.warn('[login] /auth/me failed', meRes.status, me);
         }
       }
       if (bizId) setBusinessId(bizId);
@@ -59,7 +69,7 @@ function LoginContent() {
 
   return (
     <main style={styles.main}>
-      <section style={styles.card}>
+      <section style={styles.card} aria-label="Login">
         <h1 style={styles.h1}>Log in</h1>
         <form onSubmit={submit} style={styles.form}>
           <label style={styles.label}>
@@ -69,9 +79,9 @@ function LoginContent() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              style={styles.input}
-              autoComplete="email"
               placeholder="you@company.com"
+              autoComplete="email"
+              style={styles.input}
             />
           </label>
           <label style={styles.label}>
@@ -81,16 +91,16 @@ function LoginContent() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={styles.input}
-              autoComplete="current-password"
               placeholder="••••••••"
+              autoComplete="current-password"
+              style={styles.input}
             />
           </label>
           <button type="submit" disabled={loading} style={styles.primaryBtn} aria-busy={loading}>
             {loading ? 'Logging in…' : 'Log in'}
           </button>
         </form>
-        <p style={{ marginTop: 12, opacity: 0.9 }}>
+        <p style={styles.helper}>
           Don’t have an account?{' '}
           <a href="/signup" style={styles.link}>Create one</a>
         </p>
@@ -101,18 +111,13 @@ function LoginContent() {
 
 const styles: Record<string, React.CSSProperties> = {
   main: { minHeight: '100svh', display: 'grid', placeItems: 'center', padding: 24 },
-  card: { width: '100%', maxWidth: 420, background: 'var(--card)', border: '1px solid var(--card-bd)', borderRadius: 12, padding: 20 },
-  h1: { margin: '0 0 12px', fontSize: 24 },
+  card: { width: '100%', maxWidth: 420, background: 'var(--card)', border: '1px solid var(--card-bd)', borderRadius: 12, padding: 24 },
+  h1: { margin: '0 0 14px', fontSize: 24, color: 'var(--fg)' },
   form: { display: 'grid', gap: 12 },
-  label: { display: 'grid', gap: 6 } as React.CSSProperties,
-  labelText: { color: 'var(--fg)' },
-  input: {
-    padding: '10px 12px',
-    borderRadius: 8,
-    border: '1px solid #323232',
-    background: 'transparent',
-    color: 'var(--fg)',
-  },
+  label: { display: 'grid', gap: 6 },
+  labelText: { color: 'var(--fg)', fontSize: 14, opacity: 0.9 },
+  input: { color: 'var(--fg)', background: 'var(--input-bg)', border: '1px solid var(--input-bd)', borderRadius: 8, padding: '10px 12px' },
   primaryBtn: { padding: '10px 14px', borderRadius: 10, border: '1px solid #2a2a2a', background: 'linear-gradient(180deg,#1c1c1f,#121214)', color: '#fff' },
   link: { color: 'var(--link)' },
+  helper: { marginTop: 12, opacity: 0.9 },
 };

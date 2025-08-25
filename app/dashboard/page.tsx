@@ -46,7 +46,7 @@ function DashboardContent() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Auth guard: if no token in localStorage, send to /login
+  // Auth guard
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -54,19 +54,18 @@ function DashboardContent() {
     }
   }, [router]);
 
-  // Resolve businessId (env > localStorage)
+  // Resolve businessId
   useEffect(() => {
-    const fromEnv = BUSINESS_ID_ENV?.trim() ?? '';
+    const fromEnv = (BUSINESS_ID_ENV ?? '').trim();
     if (fromEnv) {
       setBusinessId(fromEnv);
       return;
     }
     const fromLS = getBusinessId() ?? '';
     if (fromLS) setBusinessId(fromLS);
-    else setBusinessId(''); // stay empty; button will warn
   }, []);
 
-  // Initial load + refresh on businessId change
+  // Load reports
   useEffect(() => {
     if (!businessId) {
       setLoading(false);
@@ -85,7 +84,6 @@ function DashboardContent() {
         });
       })
       .finally(() => setLoading(false));
-
     return () => ac.abort();
   }, [businessId, push]);
 
@@ -144,7 +142,7 @@ function DashboardContent() {
       <section style={styles.card}>
         <div style={styles.cardHeader}>
           <h2 style={styles.h2}>Reports</h2>
-          <button onClick={onRefresh} style={styles.secondaryBtn} aria-label="Refresh reports">
+        <button onClick={onRefresh} style={styles.secondaryBtn} aria-label="Refresh reports">
             Refresh
           </button>
         </div>
@@ -155,40 +153,12 @@ function DashboardContent() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  main: {
-    padding: '24px',
-    maxWidth: 1100,
-    margin: '0 auto',
-    display: 'grid',
-    gap: 24,
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
+  main: { padding: '24px', maxWidth: 1100, margin: '0 auto', display: 'grid', gap: 24 },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
   h1: { margin: 0, fontSize: 28, fontWeight: 700 },
   h2: { margin: 0, fontSize: 20, fontWeight: 600 },
   subtitle: { margin: 0, opacity: 0.75 },
-  card: {
-    background: 'var(--card-bg, #111213)',
-    border: '1px solid var(--card-bd, #2a2a2a)',
-    borderRadius: 12,
-    padding: 16,
-  },
-  cardHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  secondaryBtn: {
-    padding: '8px 12px',
-    borderRadius: 8,
-    border: '1px solid #3a3a3a',
-    background: 'transparent',
-    color: 'inherit',
-    cursor: 'pointer',
-  },
+  card: { background: 'var(--card)', border: '1px solid var(--card-bd)', borderRadius: 12, padding: 16 },
+  cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  secondaryBtn: { padding: '8px 12px', borderRadius: 8, border: '1px solid #3a3a3a', background: 'transparent', color: 'inherit', cursor: 'pointer' },
 };
