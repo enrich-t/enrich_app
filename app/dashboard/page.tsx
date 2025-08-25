@@ -5,15 +5,18 @@ import { useRouter } from 'next/navigation';
 import { ToastProvider, useToast } from '../../components/Toast';
 import ReportsTable, { Report, ReportStatus } from '../../components/ReportsTable';
 import GenerateReportButton from '../../components/GenerateReportButton';
-import { authHeaders, getToken, getBusinessId } from '../../components/auth';
+import { getToken, getBusinessId } from '../../components/auth';
 import FigmaDashboardShell from '../../components/FigmaDashboardShell';
 
 type ApiListResponse = unknown;
 
+// Read env safely
 const ENV_BIZ =
   typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === 'string'
     ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string)
     : '';
+
+// ---------- helpers ----------
 
 function asStatus(v: any): ReportStatus {
   const s = String(v ?? '').toLowerCase();
@@ -30,12 +33,14 @@ function firstPresent<T = any>(obj: any, keys: string[], coerce?: (x: any) => T)
   }
   return null;
 }
+
 function normalizeArray(payload: any): any[] {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.reports)) return payload.reports;
   return [];
 }
+
 function normalizeReports(payload: any): Report[] {
   const arr = normalizeArray(payload);
   return arr.map((r: any, i: number) => {
@@ -77,24 +82,36 @@ function normalizeReports(payload: any): Report[] {
   });
 }
 
-async function fetchReports(businessId: string, signal?: AbortSignal): Promise<Report[]> {
-  // Build headers concretely to satisfy TS
-  const h: HeadersInit = { 'Content-Type': 'application/json' };
-  const auth = authHeaders(); // may be {}
-  Object.assign(h, auth);
+function buildHeaders(base?: Record<string, string>): Record<string, string> {
+  return { ...(base ?? {}) };
+}
+
+async function fetchReports(
+  businessId: string,
+  token?: string,
+  signal?: AbortSignal
+): Promise<Report[]> {
+  const headers = buildHeaders({ 'Content-Type': 'application/json' });
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`/api/reports/list/${encodeURIComponent(String(businessId))}`, {
     method: 'GET',
-    headers: h,
+    headers,
     signal,
     cache: 'no-store',
   });
   const raw = await res.text();
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${raw}`);
   let json: any = [];
-  try { json = JSON.parse(raw); } catch {}
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    // leave as []
+  }
   return normalizeReports(json);
 }
+
+// ---------- page ----------
 
 export default function DashboardPage() {
   return (
@@ -113,6 +130,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState<boolean>(true);
   const [diag, setDiag] = useState<string>('');
 
+  // Auth guard
   useEffect(() => {
     const token = getToken();
     if (!token || typeof token !== 'string' || token.trim() === '') {
@@ -120,6 +138,7 @@ function DashboardContent() {
     }
   }, [router]);
 
+  // Resolve businessId
   useEffect(() => {
     if (ENV_BIZ) {
       setBusinessId(ENV_BIZ);
@@ -129,14 +148,16 @@ function DashboardContent() {
     if (fromLS) setBusinessId(fromLS);
   }, []);
 
+  // Load reports
   useEffect(() => {
+    const token = getToken() || undefined;
     if (!businessId) {
       setLoading(false);
       return;
     }
     const ac = new AbortController();
     setLoading(true);
-    fetchReports(businessId, ac.signal)
+    fetchReports(businessId, token, ac.signal)
       .then((data) => setReports(Array.isArray(data) ? data : []))
       .catch((err) => {
         console.error('[dashboard] list error', err);
@@ -154,7 +175,8 @@ function DashboardContent() {
     () => async () => {
       if (!businessId) return;
       try {
-        const data = await fetchReports(businessId);
+        const token = getToken() || undefined;
+        const data = await fetchReports(businessId, token);
         setReports(Array.isArray(data) ? data : []);
         push({ title: 'Refreshed', description: 'Report list updated.' });
       } catch (err: any) {
@@ -165,97 +187,101 @@ function DashboardContent() {
     [businessId, push]
   );
 
-    const onGenerate = useMemo(
-  () => async () => {
-    const token = getToken();
-    if (!token) {
-      push({ title: 'Not logged in', description: 'Please log in again.', tone: 'error' });
-      router.replace('/login');
-      return;
-    }
-    if (!businessId) {
-      push({
-        title: 'Missing Business ID',
-        description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id',
-        tone: 'error',
-      });
-      return;
-    }
-
-    // Best-effort: fetch profile to include business name and requesting user id
-    let business_name: string | undefined;
-    let requested_by: string | undefined;
-    try {
-      const meRes = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-      if (meRes.ok) {
-        const me = await meRes.json().catch(() => null);
-        const prof = me?.profile ?? me?.data ?? me ?? {};
-        business_name = prof?.business_name ?? prof?.businessName ?? undefined;
-        requested_by = prof?.id ?? prof?.user_id ?? prof?.userId ?? undefined;
+  const onGenerate = useMemo(
+    () => async () => {
+      const token = getToken();
+      if (!token) {
+        push({ title: 'Not logged in', description: 'Please log in again.', tone: 'error' });
+        router.replace('/login');
+        return;
       }
-    } catch {
-      /* ignore best-effort */
-    }
+      if (!businessId) {
+        push({
+          title: 'Missing Business ID',
+          description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id',
+          tone: 'error',
+        });
+        return;
+      }
 
-    // Universal payload: include snake + camel keys to satisfy various backends
-    const payload: Record<string, any> = {
-      business_id: String(businessId),
-      businessId: String(businessId),
-      report_type: 'business_overview',
-      reportType: 'business_overview',
-      ...(business_name ? { business_name, businessName: business_name } : {}),
-      ...(requested_by ? { requested_by, requestedBy: requested_by } : {}),
-      source: 'dashboard',
-    };
+      // Best-effort: get profile to include business name + requester id
+      let business_name: string | undefined;
+      let requested_by: string | undefined;
+      try {
+        const meRes = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        });
+        if (meRes.ok) {
+          const me = await meRes.json().catch(() => null);
+          const prof = me?.profile ?? me?.data ?? me ?? {};
+          business_name = prof?.business_name ?? prof?.businessName ?? undefined;
+          requested_by = prof?.id ?? prof?.user_id ?? prof?.userId ?? undefined;
+        }
+      } catch {
+        /* ignore */
+      }
 
-    const idempotencyKey = `dash-${businessId}-${Date.now()}`;
+      // Universal payload (snake + camel) to satisfy most backends
+      const payload: Record<string, any> = {
+        business_id: String(businessId),
+        businessId: String(businessId),
+        report_type: 'business_overview',
+        reportType: 'business_overview',
+        ...(business_name ? { business_name, businessName: business_name } : {}),
+        ...(requested_by ? { requested_by, requestedBy: requested_by } : {}),
+        source: 'dashboard',
+      };
 
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      'Idempotency-Key': idempotencyKey,
-    };
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'Idempotency-Key': `dash-${businessId}-${Date.now()}`,
+      };
 
-    const res = await fetch('/api/reports/generate-business-overview', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
+      const res = await fetch('/api/reports/generate-business-overview', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
 
-    const bodyText = await res.text();
-    if (!res.ok) {
-      // Show the most helpful snippet we can get from the server
-      const snippet = bodyText?.slice(0, 500) || res.statusText || 'Unknown error';
-      throw new Error(`${res.status} ${res.statusText}: ${snippet}`);
-    }
+      const bodyText = await res.text();
+      if (!res.ok) {
+        const snippet = bodyText?.slice(0, 500) || res.statusText || 'Unknown error';
+        throw new Error(`${res.status} ${res.statusText}: ${snippet}`);
+      }
 
-    push({ title: 'Report requested', description: 'We’ll refresh your list shortly.' });
-    await onRefresh();
-  },
-  [businessId, push, router, onRefresh]
-);
+      push({ title: 'Report requested', description: 'We’ll refresh your list shortly.' });
+      await onRefresh();
+    },
+    [businessId, push, router, onRefresh]
+  );
 
-  // Diagnostics (build headers concretely)
+  // Diagnostics: /auth/me, list, generate — prints status + snippet
   const runDiagnostics = useMemo(
     () => async () => {
       const token = getToken();
       const biz = businessId || '(none)';
       try {
-        const h: HeadersInit = {};
-        if (token) h['Authorization'] = `Bearer ${token}`;
-        const me = await fetch('/api/auth/me', { headers: h });
+        const hGet: Record<string, string> = {};
+        if (token) hGet['Authorization'] = `Bearer ${token}`;
+
+        const me = await fetch('/api/auth/me', { headers: hGet });
         const meTxt = await me.text();
 
-        const list = await fetch(`/api/reports/list/${encodeURIComponent(biz)}`, { headers: h });
+        const list = await fetch(`/api/reports/list/${encodeURIComponent(biz)}`, { headers: hGet });
         const listTxt = await list.text();
 
-        const hPost: HeadersInit = { 'Content-Type': 'application/json' };
-        if (token) hPost['Authorization'] = `Bearer ${token}`;
+        const hPost: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) {
+          hPost['Authorization'] = `Bearer ${token}`;
+          hPost['Accept'] = 'application/json';
+          hPost['Idempotency-Key'] = `dash-${biz}-${Date.now()}`;
+        }
         const gen = await fetch('/api/reports/generate-business-overview', {
           method: 'POST',
           headers: hPost,
-          body: JSON.stringify({ business_id: String(biz) }),
+          body: JSON.stringify({ business_id: String(biz), report_type: 'business_overview' }),
         });
         const genTxt = await gen.text();
 
@@ -299,7 +325,9 @@ function DashboardContent() {
             <strong>Diagnostics</strong>
             <button className="chip-btn" onClick={runDiagnostics}>Run</button>
           </div>
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12.5 }}>{diag || 'Click Run to test /auth/me, list, and generate.'}</pre>
+          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12.5 }}>
+            {diag || 'Click Run to test /auth/me, list, and generate.'}
+          </pre>
         </div>
       </div>
     </>
