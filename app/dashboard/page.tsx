@@ -10,15 +10,16 @@ import { authHeaders, getToken, getBusinessId } from '../../components/auth';
 
 type ApiListResponse = Report[];
 
-const BUSINESS_ID_ENV = process.env.NEXT_PUBLIC_BUSINESS_ID;
+// DO NOT call .trim() directly on env — it might not be a string in some setups.
+const ENV_BIZ = typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === 'string'
+  ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string)
+  : '';
 
 async function fetchReports(businessId: string, signal?: AbortSignal): Promise<ApiListResponse> {
-  const res = await fetch(`/api/reports/list/${encodeURIComponent(businessId)}`, {
+  const headers: HeadersInit = { 'Content-Type': 'application/json', ...authHeaders() };
+  const res = await fetch(`/api/reports/list/${encodeURIComponent(String(businessId))}`, {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders(),
-    },
+    headers,
     signal,
     cache: 'no-store',
   });
@@ -49,20 +50,21 @@ function DashboardContent() {
   // Auth guard
   useEffect(() => {
     const token = getToken();
-    if (!token) {
+    if (!token || typeof token !== 'string' || token.trim() === '') {
       router.replace('/login');
     }
   }, [router]);
 
-  // Resolve businessId
+  // Resolve businessId safely
   useEffect(() => {
-    const fromEnv = (BUSINESS_ID_ENV ?? '').trim();
-    if (fromEnv) {
-      setBusinessId(fromEnv);
+    if (typeof ENV_BIZ === 'string' && ENV_BIZ) {
+      setBusinessId(String(ENV_BIZ));
       return;
     }
-    const fromLS = getBusinessId() ?? '';
-    if (fromLS) setBusinessId(fromLS);
+    const fromLS = getBusinessId();
+    if (typeof fromLS === 'string' && fromLS) {
+      setBusinessId(String(fromLS));
+    }
   }, []);
 
   // Load reports
@@ -74,9 +76,9 @@ function DashboardContent() {
     const ac = new AbortController();
     setLoading(true);
     fetchReports(businessId, ac.signal)
-      .then((data) => setReports(data ?? []))
+      .then((data) => setReports(Array.isArray(data) ? data : []))
       .catch((err) => {
-        console.error(err);
+        console.error('[dashboard] list error', err);
         push({
           title: 'Could not load reports',
           description: err?.message || 'Please try again.',
@@ -92,10 +94,10 @@ function DashboardContent() {
       if (!businessId) return;
       try {
         const data = await fetchReports(businessId);
-        setReports(data ?? []);
+        setReports(Array.isArray(data) ? data : []);
         push({ title: 'Refreshed', description: 'Report list updated.' });
       } catch (err: any) {
-        console.error(err);
+        console.error('[dashboard] refresh error', err);
         push({
           title: 'Refresh failed',
           description: err?.message || 'Please try again.',
@@ -112,13 +114,12 @@ function DashboardContent() {
         push({ title: 'Missing Business ID', description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id', tone: 'error' });
         return;
       }
+      const headers: HeadersInit = { 'Content-Type': 'application/json', ...authHeaders() };
+      const body = JSON.stringify({ business_id: String(businessId) });
       const res = await fetch('/api/reports/generate-business-overview', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authHeaders(),
-        },
-        body: JSON.stringify({ business_id: businessId }),
+        headers,
+        body,
       });
       if (!res.ok) {
         const msg = await res.text().catch(() => res.statusText);
@@ -142,7 +143,7 @@ function DashboardContent() {
       <section style={styles.card}>
         <div style={styles.cardHeader}>
           <h2 style={styles.h2}>Reports</h2>
-        <button onClick={onRefresh} style={styles.secondaryBtn} aria-label="Refresh reports">
+          <button onClick={onRefresh} style={styles.secondaryBtn} aria-label="Refresh reports">
             Refresh
           </button>
         </div>
