@@ -78,9 +78,14 @@ function normalizeReports(payload: any): Report[] {
 }
 
 async function fetchReports(businessId: string, signal?: AbortSignal): Promise<Report[]> {
+  // Build headers concretely to satisfy TS
+  const h: HeadersInit = { 'Content-Type': 'application/json' };
+  const auth = authHeaders(); // may be {}
+  Object.assign(h, auth);
+
   const res = await fetch(`/api/reports/list/${encodeURIComponent(String(businessId))}`, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: h,
     signal,
     cache: 'no-store',
   });
@@ -108,7 +113,6 @@ function DashboardContent() {
   const [loading, setLoading] = useState<boolean>(true);
   const [diag, setDiag] = useState<string>('');
 
-  // Auth guard
   useEffect(() => {
     const token = getToken();
     if (!token || typeof token !== 'string' || token.trim() === '') {
@@ -116,7 +120,6 @@ function DashboardContent() {
     }
   }, [router]);
 
-  // Resolve businessId
   useEffect(() => {
     if (ENV_BIZ) {
       setBusinessId(ENV_BIZ);
@@ -126,7 +129,6 @@ function DashboardContent() {
     if (fromLS) setBusinessId(fromLS);
   }, []);
 
-  // Load reports
   useEffect(() => {
     if (!businessId) {
       setLoading(false);
@@ -179,9 +181,12 @@ function DashboardContent() {
         });
         return;
       }
+      const h: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) h['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/reports/generate-business-overview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: h,
         body: JSON.stringify({ business_id: String(businessId) }),
       });
       const body = await res.text();
@@ -192,22 +197,25 @@ function DashboardContent() {
     [businessId, push, router, onRefresh]
   );
 
-  // --- Diagnostics (always visible) ---
+  // Diagnostics (build headers concretely)
   const runDiagnostics = useMemo(
     () => async () => {
       const token = getToken();
       const biz = businessId || '(none)';
       try {
-        const h = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : {};
+        const h: HeadersInit = {};
+        if (token) h['Authorization'] = `Bearer ${token}`;
         const me = await fetch('/api/auth/me', { headers: h });
         const meTxt = await me.text();
 
         const list = await fetch(`/api/reports/list/${encodeURIComponent(biz)}`, { headers: h });
         const listTxt = await list.text();
 
+        const hPost: HeadersInit = { 'Content-Type': 'application/json' };
+        if (token) hPost['Authorization'] = `Bearer ${token}`;
         const gen = await fetch('/api/reports/generate-business-overview', {
           method: 'POST',
-          headers: h,
+          headers: hPost,
           body: JSON.stringify({ business_id: String(biz) }),
         });
         const genTxt = await gen.text();
