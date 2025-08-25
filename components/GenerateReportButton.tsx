@@ -17,15 +17,11 @@ export default function GenerateReportButton({ onGenerate, onDone }: Props) {
     setLoading(true);
     try {
       await onGenerate();
-      push({ title: 'Report requested', description: 'We’ll refresh your list shortly.' });
       await onDone?.();
     } catch (err: any) {
-      console.error(err);
-      push({
-        title: 'Generation failed',
-        description: err?.message || 'Please try again.',
-        tone: 'error',
-      });
+      console.error('[generate]', err);
+      const message = (err?.message && String(err.message)) || 'Please try again.';
+      push({ title: 'Generation failed', description: message, tone: 'error' });
     } finally {
       setLoading(false);
     }
@@ -74,17 +70,12 @@ function Spinner() {
   );
 }
 
-// Inject keyframes once on client
 if (typeof document !== 'undefined') {
   const id = 'gen-btn-spin-keyframes';
   if (!document.getElementById(id)) {
     const style = document.createElement('style');
     style.id = id;
-    style.textContent = `
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-    `;
+    style.textContent = `@keyframes spin { to { transform: rotate(360deg) } }`;
     document.head.appendChild(style);
   }
 }
