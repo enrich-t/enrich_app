@@ -1,0 +1,17 @@
+/* Place Figma’s CSS here or @import your exported CSS.
+   You can also paste the entire CSS from the Figma export below this line.
+*/
+
+/* Example tiny base to keep contrast consistent with your app */
+:root {
+  --bg: #0b0c0d;
+  --fg: #f5f7fa;
+}
+.figma-root {
+  color: var(--fg);
+  background: var(--bg);
+}
+/* If Figma hard-coded black text, force it readable: */
+.figma-root, .figma-root * {
+  color: inherit;
+}
