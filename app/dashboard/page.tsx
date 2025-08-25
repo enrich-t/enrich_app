@@ -165,7 +165,7 @@ function DashboardContent() {
     [businessId, push]
   );
 
-  const onGenerate = useMemo(
+    const onGenerate = useMemo(
     () => async () => {
       const token = getToken();
       if (!token) {
@@ -181,16 +181,42 @@ function DashboardContent() {
         });
         return;
       }
-      const h: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) h['Authorization'] = `Bearer ${token}`;
 
+      // Try to enrich payload with business_name from /auth/me (if available)
+      let business_name: string | undefined = undefined;
+      try {
+        const meRes = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+        if (meRes.ok) {
+          const me = await meRes.json().catch(() => null);
+          business_name =
+            me?.profile?.business_name ||
+            me?.data?.business_name ||
+            me?.business_name ||
+            undefined;
+        }
+      } catch {
+        // ignore – purely best-effort
+      }
+
+      const payload: Record<string, any> = {
+        business_id: String(businessId),
+        report_type: 'business_overview',
+      };
+      if (business_name) payload.business_name = business_name;
+
+      const h: HeadersInit = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
       const res = await fetch('/api/reports/generate-business-overview', {
         method: 'POST',
         headers: h,
-        body: JSON.stringify({ business_id: String(businessId) }),
+        body: JSON.stringify(payload),
       });
       const body = await res.text();
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${body}`);
+
+      if (!res.ok) {
+        const snippet = body?.slice(0, 300) || res.statusText;
+        throw new Error(`${res.status} ${res.statusText}: ${snippet}`);
+      }
+
       push({ title: 'Report requested', description: 'We’ll refresh your list shortly.' });
       await onRefresh();
     },
