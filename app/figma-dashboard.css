@@ -1,17 +1,124 @@
-/* Place Figma’s CSS here or @import your exported CSS.
-   You can also paste the entire CSS from the Figma export below this line.
-*/
-
-/* Example tiny base to keep contrast consistent with your app */
+/* Figma-inspired theme tokens */
 :root {
   --bg: #0b0c0d;
-  --fg: #f5f7fa;
+  --fg: #f6f7fb;
+  --muted: #a8b0bb;
+  --card: #121316;
+  --card-bd: #2b2e33;
+  --acc: #2363ff;
+  --acc-2: #1d8cfe;
+  --ok: #16a34a;
+  --warn: #eab308;
+  --bad: #ef4444;
+  --chip-bg: #181a20;
 }
+
+/* Layout */
 .figma-root {
-  color: var(--fg);
   background: var(--bg);
+  color: var(--fg);
+  min-height: 100svh;
+  display: grid;
+  grid-template-rows: auto 1fr;
 }
-/* If Figma hard-coded black text, force it readable: */
-.figma-root, .figma-root * {
-  color: inherit;
+
+.dashboard-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+  display: grid;
+  gap: 20px;
+}
+
+.dashboard-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.header-actions {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* “Stat” cards row (looks like Figma tiles) */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 1024px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .stats-row { grid-template-columns: 1fr; } }
+
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--card-bd);
+  border-radius: 14px;
+  padding: 14px;
+}
+.stat-title { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+.stat-value { font-size: 20px; font-weight: 700; margin: 0; }
+.stat-trend { font-size: 12px; margin-top: 4px; }
+.stat-up { color: var(--ok); }
+.stat-down { color: var(--bad); }
+
+.dashboard-main {
+  display: grid;
+  gap: 16px;
+}
+
+/* Reports section */
+.reports-section {
+  background: var(--card);
+  border: 1px solid var(--card-bd);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* Small “chip” buttons for secondary actions */
+.chip-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #353a44;
+  background: var(--chip-bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+/* Footer */
+.dashboard-footer {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
 }

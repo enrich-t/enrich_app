@@ -6,35 +6,62 @@ import '../app/figma-dashboard.css';
 type Props = {
   actions?: React.ReactNode;
   reports?: React.ReactNode;
-  alerts?: React.ReactNode;
+  extraHeaderRight?: React.ReactNode;
 };
 
 /**
- * Paste your Figma-exported HTML inside the FIGMA_PASTE area.
- * - Convert class="" to className=""
- * - Replace <img src="./assets/..."> with <img src="/figma/...">
- * - Keep the data-slot divs; we inject our interactive widgets into them.
+ * This mirrors your Figma layout (header, stat tiles, reports card) without extra deps.
+ * Later we can swap any block for real shadcn/recharts if you decide to add those deps.
  */
-export default function FigmaDashboardShell({ actions, reports, alerts }: Props) {
+export default function FigmaDashboardShell({ actions, reports, extraHeaderRight }: Props) {
   return (
     <div className="figma-root">
-      {/* ===== FIGMA_PASTE_START =====
-         Paste your Figma HTML below, kept as close as possible.
-         Keep the slot placeholders (data-slot=...) somewhere logical in the layout.
-      */}
-
-      <div className="dashboard-container" style={{ minHeight: '100svh' }}>
+      <div className="dashboard-container">
         <header className="dashboard-header">
-          <h1 className="title">Dashboard</h1>
-          {/* Slot for actions (generate button, filters, etc.) */}
-          <div data-slot="actions">{actions}</div>
+          <div>
+            <h1 className="title">Dashboard</h1>
+            <p className="subtitle">Reports overview & quick actions</p>
+          </div>
+          <div className="header-actions">
+            {extraHeaderRight}
+            {actions}
+          </div>
         </header>
 
+        {/* Stat tiles — decorative for now; you can wire to real numbers later */}
+        <div className="stats-row" aria-label="Key metrics">
+          <div className="stat-card">
+            <p className="stat-title">Transparency Score</p>
+            <p className="stat-value">82</p>
+            <p className="stat-trend stat-up">+4 this week</p>
+          </div>
+          <div className="stat-card">
+            <p className="stat-title">Open Risks</p>
+            <p className="stat-value">3</p>
+            <p className="stat-trend stat-down">+1 this week</p>
+          </div>
+          <div className="stat-card">
+            <p className="stat-title">Reports Generated</p>
+            <p className="stat-value">24</p>
+            <p className="stat-trend stat-up">+2 today</p>
+          </div>
+          <div className="stat-card">
+            <p className="stat-title">Avg. Turnaround</p>
+            <p className="stat-value">1m 12s</p>
+            <p className="stat-trend">Last 10 jobs</p>
+          </div>
+        </div>
+
         <main className="dashboard-main">
-          {/* Slot for reports table */}
           <section className="reports-section">
-            <h2 className="subtitle">Reports</h2>
-            <div data-slot="reports">{reports}</div>
+            <div className="section-head">
+              <h2 className="section-title">Recent Reports</h2>
+              <div style={{ display: 'inline-flex', gap: 8 }}>
+                {/* Keep a small refresh here if you like */}
+                {/* You can inject a Refresh button from the page if needed */}
+              </div>
+            </div>
+            <div>{reports}</div>
           </section>
         </main>
 
@@ -42,11 +69,6 @@ export default function FigmaDashboardShell({ actions, reports, alerts }: Props)
           <small>© Enrich</small>
         </footer>
       </div>
-
-      {/* ===== FIGMA_PASTE_END ===== */}
-
-      {/* Optional slot if you want to mount alerts somewhere specific */}
-      <div data-slot="alerts" style={{ position: 'relative', zIndex: 10 }}>{alerts}</div>
     </div>
   );
 }

@@ -9,16 +9,25 @@ import { authHeaders, getToken, getBusinessId } from '../../components/auth';
 import FigmaDashboardShell from '../../components/FigmaDashboardShell';
 
 type ApiListResponse = unknown;
-const ENV_BIZ = typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === 'string'
-  ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string) : '';
+
+const ENV_BIZ =
+  typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === 'string'
+    ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string)
+    : '';
 
 function asStatus(v: any): ReportStatus {
   const s = String(v ?? '').toLowerCase();
-  return (['pending','processing','ready','failed'] as ReportStatus[]).includes(s as ReportStatus)
-    ? (s as ReportStatus) : 'ready';
+  return (['pending', 'processing', 'ready', 'failed'] as ReportStatus[]).includes(
+    s as ReportStatus
+  )
+    ? (s as ReportStatus)
+    : 'ready';
 }
-function firstPresent<T = any>(obj: any, keys: string[], coerce?: (x:any)=>T): T | null {
-  for (const k of keys) if (obj && obj[k] != null) return coerce ? coerce(obj[k]) : obj[k];
+
+function firstPresent<T = any>(obj: any, keys: string[], coerce?: (x: any) => T): T | null {
+  for (const k of keys) {
+    if (obj && obj[k] != null) return coerce ? coerce(obj[k]) : obj[k];
+  }
   return null;
 }
 function normalizeArray(payload: any): any[] {
@@ -30,20 +39,41 @@ function normalizeArray(payload: any): any[] {
 function normalizeReports(payload: any): Report[] {
   const arr = normalizeArray(payload);
   return arr.map((r: any, i: number) => {
-    const id = firstPresent<string>(r, ['id','report_id'], (x)=>String(x)) ?? `tmp-${Date.now()}-${i}`;
-    const report_type = firstPresent<string>(r, ['report_type','type','kind'], (x)=>String(x)) ?? 'business_overview';
-    const status = asStatus(firstPresent<string>(r, ['status','state','phase'], (x)=>String(x)) ?? 'ready');
+    const id =
+      firstPresent<string>(r, ['id', 'report_id'], (x) => String(x)) ?? `tmp-${Date.now()}-${i}`;
+    const report_type =
+      firstPresent<string>(r, ['report_type', 'type', 'kind'], (x) => String(x)) ??
+      'business_overview';
+    const status = asStatus(
+      firstPresent<string>(r, ['status', 'state', 'phase'], (x) => String(x)) ?? 'ready'
+    );
     const createdISO = (() => {
-      const raw = firstPresent<any>(r, ['created_at','createdAt','inserted_at','created_on','createdOn']);
+      const raw = firstPresent<any>(r, [
+        'created_at',
+        'createdAt',
+        'inserted_at',
+        'created_on',
+        'createdOn',
+      ]);
       const d = raw ? new Date(raw) : new Date();
       return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
     })();
-    const csv_url  = firstPresent<string>(r, ['csv_url','csvUrl','canva_csv_url'], (x)=>String(x));
-    const json_url = firstPresent<string>(r, ['json_url','jsonUrl'], (x)=>String(x));
-    const pdf_url  = firstPresent<string>(r, ['pdf_url','pdfUrl'], (x)=>String(x));
-    const export_link = firstPresent<string>(r, ['export_link','download_url','downloadUrl'], (x)=>String(x));
+    const csv_url = firstPresent<string>(r, ['csv_url', 'csvUrl', 'canva_csv_url'], (x) => String(x));
+    const json_url = firstPresent<string>(r, ['json_url', 'jsonUrl'], (x) => String(x));
+    const pdf_url = firstPresent<string>(r, ['pdf_url', 'pdfUrl'], (x) => String(x));
+    const export_link = firstPresent<string>(r, ['export_link', 'download_url', 'downloadUrl'], (x) => String(x));
     const pdf = pdf_url ?? export_link ?? null;
-    return { id, report_type, status, created_at: createdISO, csv_url: csv_url ?? null, json_url: json_url ?? null, pdf_url: pdf, export_link: export_link ?? null };
+
+    return {
+      id,
+      report_type,
+      status,
+      created_at: createdISO,
+      csv_url: csv_url ?? null,
+      json_url: json_url ?? null,
+      pdf_url: pdf,
+      export_link: export_link ?? null,
+    } satisfies Report;
   });
 }
 
@@ -87,21 +117,31 @@ function DashboardContent() {
 
   // Resolve businessId
   useEffect(() => {
-    if (ENV_BIZ) { setBusinessId(ENV_BIZ); return; }
+    if (ENV_BIZ) {
+      setBusinessId(ENV_BIZ);
+      return;
+    }
     const fromLS = getBusinessId();
     if (fromLS) setBusinessId(fromLS);
   }, []);
 
   // Load reports
   useEffect(() => {
-    if (!businessId) { setLoading(false); return; }
+    if (!businessId) {
+      setLoading(false);
+      return;
+    }
     const ac = new AbortController();
     setLoading(true);
     fetchReports(businessId, ac.signal)
       .then((data) => setReports(Array.isArray(data) ? data : []))
       .catch((err) => {
         console.error('[dashboard] list error', err);
-        push({ title: 'Could not load reports', description: String(err?.message || err), tone: 'error' });
+        push({
+          title: 'Could not load reports',
+          description: String(err?.message || err),
+          tone: 'error',
+        });
       })
       .finally(() => setLoading(false));
     return () => ac.abort();
@@ -131,7 +171,11 @@ function DashboardContent() {
         return;
       }
       if (!businessId) {
-        push({ title: 'Missing Business ID', description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id', tone: 'error' });
+        push({
+          title: 'Missing Business ID',
+          description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id',
+          tone: 'error',
+        });
         return;
       }
       const res = await fetch('/api/reports/generate-business-overview', {
@@ -147,9 +191,16 @@ function DashboardContent() {
     [businessId, push, router, onRefresh]
   );
 
+  const headerRight = (
+    <button onClick={onRefresh} className="chip-btn" aria-label="Refresh reports">
+      Refresh
+    </button>
+  );
+
   return (
     <FigmaDashboardShell
       actions={<GenerateReportButton onGenerate={onGenerate} onDone={onRefresh} />}
+      extraHeaderRight={headerRight}
       reports={<ReportsTable reports={reports} loading={loading} />}
     />
   );
