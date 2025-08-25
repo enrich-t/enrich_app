@@ -106,6 +106,7 @@ function DashboardContent() {
   const [businessId, setBusinessId] = useState<string>('');
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [diag, setDiag] = useState<string>('');
 
   // Auth guard
   useEffect(() => {
@@ -191,17 +192,69 @@ function DashboardContent() {
     [businessId, push, router, onRefresh]
   );
 
+  // --- Diagnostics (always visible) ---
+  const runDiagnostics = useMemo(
+    () => async () => {
+      const token = getToken();
+      const biz = businessId || '(none)';
+      try {
+        const h = token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : {};
+        const me = await fetch('/api/auth/me', { headers: h });
+        const meTxt = await me.text();
+
+        const list = await fetch(`/api/reports/list/${encodeURIComponent(biz)}`, { headers: h });
+        const listTxt = await list.text();
+
+        const gen = await fetch('/api/reports/generate-business-overview', {
+          method: 'POST',
+          headers: h,
+          body: JSON.stringify({ business_id: String(biz) }),
+        });
+        const genTxt = await gen.text();
+
+        setDiag(
+          [
+            `Token present: ${!!token} (len=${token ? token.length : 0})`,
+            `Business ID: ${biz}`,
+            `GET /api/auth/me -> ${me.status} ${me.statusText}`,
+            (meTxt || '').slice(0, 200),
+            `GET /api/reports/list/${biz} -> ${list.status} ${list.statusText}`,
+            (listTxt || '').slice(0, 200),
+            `POST /api/reports/generate-business-overview -> ${gen.status} ${gen.statusText}`,
+            (genTxt || '').slice(0, 200),
+          ].join('\n')
+        );
+      } catch (e: any) {
+        setDiag(`Diagnostics error: ${String(e?.message || e)}`);
+      }
+    },
+    [businessId]
+  );
+
   const headerRight = (
-    <button onClick={onRefresh} className="chip-btn" aria-label="Refresh reports">
-      Refresh
-    </button>
+    <div style={{ display: 'inline-flex', gap: 8 }}>
+      <button onClick={onRefresh} className="chip-btn" aria-label="Refresh reports">
+        Refresh
+      </button>
+    </div>
   );
 
   return (
-    <FigmaDashboardShell
-      actions={<GenerateReportButton onGenerate={onGenerate} onDone={onRefresh} />}
-      extraHeaderRight={headerRight}
-      reports={<ReportsTable reports={reports} loading={loading} />}
-    />
+    <>
+      <FigmaDashboardShell
+        actions={<GenerateReportButton onGenerate={onGenerate} onDone={onRefresh} />}
+        extraHeaderRight={headerRight}
+        reports={<ReportsTable reports={reports} loading={loading} />}
+      />
+      <div style={{ maxWidth: 1200, margin: '8px auto 24px', padding: '0 24px' }}>
+        <div style={{ background: '#0b0c0e', border: '1px solid #22252a', borderRadius: 8, padding: 12 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+            <strong>Diagnostics</strong>
+            <button className="chip-btn" onClick={runDiagnostics}>Run</button>
+          </div>
+          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12.5 }}>{diag || 'Click Run to test /auth/me, list, and generate.'}</pre>
+        </div>
+      </div>
+    </>
   );
 }
