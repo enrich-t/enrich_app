@@ -1,105 +1,29 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ===== Brand tokens ===== */
-:root {
-  --brand-primary: #6a2e3e;
-  --brand-secondary: #faf6d0;
+:root{
+  --bg: #0b0c0d;
+  --fg: #f5f7fa;
+  --muted: #a9b1bb;
+  --card: #111213;
+  --card-bd: #2a2a2a;
+  --link: #7fb5ff;
+  --focus: #3b82f6;
 }
 
-/* ===== Base ===== */
-html, body {
-  min-height: 100%;
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
 }
 
-body {
-  background-color: #fafafa;   /* ~bg-gray-50 */
-  color: #0a0a0a;              /* ~text-gray-900 */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Make form controls readable on dark bg */
+input,button,select,textarea{
+  color: var(--fg);
+  background: transparent;
 }
+input::placeholder, textarea::placeholder { color: #9aa3ad; }
 
-/* Make keyboard focus clearly visible */
-*:focus-visible {
-  outline: 2px solid var(--brand-primary);
-  outline-offset: 2px;
-}
-
-/* Images scale nicely */
-img, video, canvas, svg {
-  max-width: 100%;
-  height: auto;
-}
-
-/* ===== Form elements (light defaults so pages look consistent) ===== */
-input, textarea, select {
-  width: 100%;
-  border: 1px solid #e4e4e7;     /* ~border-zinc-200 */
-  background: #fff;
-  color: inherit;
-  border-radius: 0.75rem;         /* rounded-xl */
-  padding: 0.5rem 0.75rem;        /* py-2 px-3 */
-  outline: none;
-}
-
-input::placeholder, textarea::placeholder {
-  color: #9ca3af;                 /* ~text-gray-400 */
-}
-
-input:focus, textarea:focus, select:focus {
-  border-color: #0a0a0a;          /* ~gray-900 */
-  box-shadow: 0 0 0 3px rgba(10,10,10,0.08);
-}
-
-/* ===== Simple helpers (no @apply to avoid build issues) ===== */
-.card {
-  border-radius: 1rem;            /* rounded-2xl */
-  background: #fff;
-  border: 1px solid #e4e4e7;      /* ~border-zinc-200 */
-  box-shadow: 0 1px 2px rgba(0,0,0,.06); /* shadow-sm */
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.75rem;         /* rounded-xl */
-  padding: 0.5rem 1rem;           /* px-4 py-2 */
-  font-size: 0.875rem;            /* text-sm */
-  font-weight: 500;               /* font-medium */
-  transition: box-shadow 150ms, transform 150ms, opacity 150ms;
-  border: 1px solid #e4e4e7;      /* border-zinc-200 */
-  background: var(--brand-primary);
-  color: #fff;
-  box-shadow: 0 1px 2px rgba(0,0,0,.06);
-}
-.btn:hover { transform: translateY(-1px); }
-.btn:active { transform: translateY(0); }
-.btn:disabled { opacity: .6; cursor: not-allowed; }
-
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: 1px solid #e4e4e7;
-  background: #fff;
-  color: #0a0a0a;
-}
-
-.link {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-/* Optional: subtle section headings */
-.section-title {
-  font-size: 0.875rem;
-  color: #6b7280;                 /* ~text-gray-500 */
-  letter-spacing: .02em;
-  margin-bottom: .25rem;
-}
+a{ color: var(--link); }
+button{ cursor: pointer; }
+:focus-visible{ outline: 2px solid var(--focus); outline-offset: 2px; }

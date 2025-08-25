@@ -37,9 +37,8 @@ function LoginContent() {
       const token = extractToken(data);
       if (token) setToken(token);
 
-      // Try to get business_id from login response or /auth/me
       let bizId = extractBusinessId(data);
-      if (!bizId) {
+      if (!bizId && token) {
         const meRes = await fetch('/api/auth/me', { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
         const me = await safeJson(meRes);
         if (meRes.ok) {
@@ -64,7 +63,7 @@ function LoginContent() {
         <h1 style={styles.h1}>Log in</h1>
         <form onSubmit={submit} style={styles.form}>
           <label style={styles.label}>
-            <span>Email</span>
+            <span style={styles.labelText}>Email</span>
             <input
               type="email"
               required
@@ -72,10 +71,11 @@ function LoginContent() {
               onChange={(e) => setEmail(e.target.value)}
               style={styles.input}
               autoComplete="email"
+              placeholder="you@company.com"
             />
           </label>
           <label style={styles.label}>
-            <span>Password</span>
+            <span style={styles.labelText}>Password</span>
             <input
               type="password"
               required
@@ -83,13 +83,14 @@ function LoginContent() {
               onChange={(e) => setPassword(e.target.value)}
               style={styles.input}
               autoComplete="current-password"
+              placeholder="••••••••"
             />
           </label>
           <button type="submit" disabled={loading} style={styles.primaryBtn} aria-busy={loading}>
             {loading ? 'Logging in…' : 'Log in'}
           </button>
         </form>
-        <p style={{ marginTop: 12, opacity: 0.8 }}>
+        <p style={{ marginTop: 12, opacity: 0.9 }}>
           Don’t have an account?{' '}
           <a href="/signup" style={styles.link}>Create one</a>
         </p>
@@ -100,11 +101,18 @@ function LoginContent() {
 
 const styles: Record<string, React.CSSProperties> = {
   main: { minHeight: '100svh', display: 'grid', placeItems: 'center', padding: 24 },
-  card: { width: '100%', maxWidth: 420, background: '#111213', border: '1px solid #2a2a2a', borderRadius: 12, padding: 20 },
+  card: { width: '100%', maxWidth: 420, background: 'var(--card)', border: '1px solid var(--card-bd)', borderRadius: 12, padding: 20 },
   h1: { margin: '0 0 12px', fontSize: 24 },
   form: { display: 'grid', gap: 12 },
   label: { display: 'grid', gap: 6 } as React.CSSProperties,
-  input: { padding: '10px 12px', borderRadius: 8, border: '1px solid #323232', background: 'transparent', color: 'inherit' },
-  primaryBtn: { padding: '10px 14px', borderRadius: 10, border: '1px solid #2a2a2a', background: 'linear-gradient(180deg,#1c1c1f,#121214)', color: '#fff', cursor: 'pointer' },
-  link: { color: '#7fb5ff' },
+  labelText: { color: 'var(--fg)' },
+  input: {
+    padding: '10px 12px',
+    borderRadius: 8,
+    border: '1px solid #323232',
+    background: 'transparent',
+    color: 'var(--fg)',
+  },
+  primaryBtn: { padding: '10px 14px', borderRadius: 10, border: '1px solid #2a2a2a', background: 'linear-gradient(180deg,#1c1c1f,#121214)', color: '#fff' },
+  link: { color: 'var(--link)' },
 };
