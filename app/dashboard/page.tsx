@@ -4,30 +4,84 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '../../components/AppHeader';
 import { ToastProvider, useToast } from '../../components/Toast';
-import ReportsTable, { Report } from '../../components/ReportsTable';
+import ReportsTable, { Report, ReportStatus } from '../../components/ReportsTable';
 import GenerateReportButton from '../../components/GenerateReportButton';
 import { authHeaders, getToken, getBusinessId } from '../../components/auth';
 
-type ApiListResponse = Report[];
+type ApiListResponse = unknown;
 
-// DO NOT call .trim() directly on env — it might not be a string in some setups.
+// Safe env read
 const ENV_BIZ = typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === 'string'
   ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string)
   : '';
 
-async function fetchReports(businessId: string, signal?: AbortSignal): Promise<ApiListResponse> {
-  const headers: HeadersInit = { 'Content-Type': 'application/json', ...authHeaders() };
+function asStatus(v: any): ReportStatus {
+  const s = String(v ?? '').toLowerCase();
+  return (['pending','processing','ready','failed'] as ReportStatus[]).includes(s as ReportStatus)
+    ? (s as ReportStatus)
+    : 'ready';
+}
+
+function firstPresent<T = any>(obj: any, keys: string[], coerce?: (x:any)=>T): T | null {
+  for (const k of keys) {
+    if (obj && obj[k] != null) return coerce ? coerce(obj[k]) : obj[k];
+  }
+  return null;
+}
+
+function normalizeArray(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.reports)) return payload.reports;
+  return [];
+}
+
+function normalizeReports(payload: any): Report[] {
+  const arr = normalizeArray(payload);
+  return arr.map((r: any, i: number) => {
+    const id = firstPresent<string>(r, ['id','report_id'], (x)=>String(x)) ?? `tmp-${Date.now()}-${i}`;
+    const report_type = firstPresent<string>(r, ['report_type','type','kind'], (x)=>String(x)) ?? 'business_overview';
+    const status = asStatus(firstPresent<string>(r, ['status','state','phase'], (x)=>String(x)) ?? 'ready');
+    const createdISO = (() => {
+      const raw = firstPresent<any>(r, ['created_at','createdAt','inserted_at','created_on','createdOn']);
+      const d = raw ? new Date(raw) : new Date();
+      return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+    })();
+    const csv_url  = firstPresent<string>(r, ['csv_url','csvUrl','canva_csv_url'], (x)=>String(x));
+    const json_url = firstPresent<string>(r, ['json_url','jsonUrl'], (x)=>String(x));
+    const pdf_url  = firstPresent<string>(r, ['pdf_url','pdfUrl'], (x)=>String(x));
+    const export_link = firstPresent<string>(r, ['export_link','download_url','downloadUrl'], (x)=>String(x));
+
+    // If only a generic export link exists and no pdf_url, surface it as pdf_url for convenience
+    const pdf = pdf_url ?? export_link ?? null;
+
+    return {
+      id,
+      report_type,
+      status,
+      created_at: createdISO,
+      csv_url: csv_url ?? null,
+      json_url: json_url ?? null,
+      pdf_url: pdf,
+      export_link: export_link ?? null,
+    } satisfies Report;
+  });
+}
+
+async function fetchReports(businessId: string, signal?: AbortSignal): Promise<Report[]> {
   const res = await fetch(`/api/reports/list/${encodeURIComponent(String(businessId))}`, {
     method: 'GET',
-    headers,
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     signal,
     cache: 'no-store',
   });
+  const raw = await res.text();
   if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    throw new Error(msg || `Failed to load reports (HTTP ${res.status}).`);
+    throw new Error(raw || `Failed to load reports (HTTP ${res.status}).`);
   }
-  return res.json();
+  let json: any = [];
+  try { json = JSON.parse(raw); } catch { /* backend might return plaintext; leave empty */ }
+  return normalizeReports(json);
 }
 
 export default function DashboardPage() {
@@ -55,35 +109,23 @@ function DashboardContent() {
     }
   }, [router]);
 
-  // Resolve businessId safely
+  // Resolve businessId safely (ENV > localStorage)
   useEffect(() => {
-    if (typeof ENV_BIZ === 'string' && ENV_BIZ) {
-      setBusinessId(String(ENV_BIZ));
-      return;
-    }
+    if (ENV_BIZ) { setBusinessId(ENV_BIZ); return; }
     const fromLS = getBusinessId();
-    if (typeof fromLS === 'string' && fromLS) {
-      setBusinessId(String(fromLS));
-    }
+    if (fromLS) setBusinessId(fromLS);
   }, []);
 
   // Load reports
   useEffect(() => {
-    if (!businessId) {
-      setLoading(false);
-      return;
-    }
+    if (!businessId) { setLoading(false); return; }
     const ac = new AbortController();
     setLoading(true);
     fetchReports(businessId, ac.signal)
       .then((data) => setReports(Array.isArray(data) ? data : []))
       .catch((err) => {
         console.error('[dashboard] list error', err);
-        push({
-          title: 'Could not load reports',
-          description: err?.message || 'Please try again.',
-          tone: 'error',
-        });
+        push({ title: 'Could not load reports', description: err?.message || 'Please try again.', tone: 'error' });
       })
       .finally(() => setLoading(false));
     return () => ac.abort();
@@ -98,11 +140,7 @@ function DashboardContent() {
         push({ title: 'Refreshed', description: 'Report list updated.' });
       } catch (err: any) {
         console.error('[dashboard] refresh error', err);
-        push({
-          title: 'Refresh failed',
-          description: err?.message || 'Please try again.',
-          tone: 'error',
-        });
+        push({ title: 'Refresh failed', description: err?.message || 'Please try again.', tone: 'error' });
       }
     },
     [businessId, push]
@@ -114,20 +152,17 @@ function DashboardContent() {
         push({ title: 'Missing Business ID', description: 'Log in or set NEXT_PUBLIC_BUSINESS_ID / localStorage.business_id', tone: 'error' });
         return;
       }
-      const headers: HeadersInit = { 'Content-Type': 'application/json', ...authHeaders() };
-      const body = JSON.stringify({ business_id: String(businessId) });
       const res = await fetch('/api/reports/generate-business-overview', {
         method: 'POST',
-        headers,
-        body,
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ business_id: String(businessId) }),
       });
-      if (!res.ok) {
-        const msg = await res.text().catch(() => res.statusText);
-        throw new Error(msg || `Generate failed (HTTP ${res.status}).`);
-      }
-      return res.json();
+      const body = await res.text();
+      if (!res.ok) throw new Error(body || `Generate failed (HTTP ${res.status}).`);
+      push({ title: 'Report requested', description: 'We’ll refresh your list shortly.' });
+      await onRefresh();
     },
-    [businessId, push]
+    [businessId, push, onRefresh]
   );
 
   return (
@@ -143,11 +178,14 @@ function DashboardContent() {
       <section style={styles.card}>
         <div style={styles.cardHeader}>
           <h2 style={styles.h2}>Reports</h2>
-          <button onClick={onRefresh} style={styles.secondaryBtn} aria-label="Refresh reports">
-            Refresh
-          </button>
+          <button onClick={onRefresh} style={styles.secondaryBtn} aria-label="Refresh reports">Refresh</button>
         </div>
         <ReportsTable reports={reports} loading={loading} />
+        {!loading && reports.length === 0 && (
+          <p style={{ marginTop: 8, opacity: 0.8 }}>
+            No reports found for this business. If you already generated some, they may appear under a different key set—try pressing <em>Generate Report</em> once and then Refresh.
+          </p>
+        )}
       </section>
     </main>
   );
