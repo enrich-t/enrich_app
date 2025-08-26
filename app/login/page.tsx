@@ -1,123 +1,172 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { extractBusinessId, extractToken, safeJson, setBusinessId, setToken } from '../../components/auth';
-import { ToastProvider, useToast } from '../../components/Toast';
+import { apiFetch } from '../../components/api';
+
+const colors = {
+  bg: '#0f1115',
+  card: '#141821',
+  border: '#252a34',
+  text: '#e9eaf0',
+  sub: '#a7adbb',
+  brand: '#9b7bd1',
+  danger: '#e57373',
+};
 
 export default function LoginPage() {
-  return (
-    <ToastProvider>
-      <LoginContent />
-    </ToastProvider>
-  );
-}
-
-function LoginContent() {
-  const { push } = useToast();
   const router = useRouter();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [pwd, setPwd] = useState('');
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  const submit = useCallback(async (e: React.FormEvent) => {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (loading) return;
+    setErr(null);
     setLoading(true);
+
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await safeJson(res);
+        body: JSON.stringify({ email, password: pwd }),
+      }, { noAuthRedirect: true }); // important: don't redirect the login page
+
+      const bodyText = await res.text();
+      let body: any = null;
+      try { body = JSON.parse(bodyText); } catch {}
+
       if (!res.ok) {
-        throw new Error(typeof data === 'string' ? data : data?.message || 'Login failed');
+        const msg =
+          body?.detail?.message ||
+          body?.message ||
+          bodyText ||
+          `${res.status} ${res.statusText}`;
+        setErr(String(msg).slice(0, 500));
+        setLoading(false);
+        return;
       }
 
-      const token = extractToken(data);
+      // Expect { ok: true, token, profile? }
+      const token = body?.token || body?.access_token || body?.data?.token;
       if (!token) {
-        console.warn('[login] No string token in response. Raw:', data);
-        throw new Error('Login succeeded, but no token was returned.');
+        setErr('No token returned by server.');
+        setLoading(false);
+        return;
       }
-      setToken(token);
 
-      let bizId = extractBusinessId(data);
-      if (!bizId) {
-        // Try /auth/me with the token we just stored
-        const meRes = await fetch('/api/auth/me', {
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        });
-        const me = await safeJson(meRes);
-        if (meRes.ok) {
-          bizId = extractBusinessId(me);
-        } else {
-          console.warn('[login] /auth/me failed', meRes.status, me);
-        }
-      }
-      if (bizId) setBusinessId(bizId);
+      // Save token (and optional business_id from profile)
+      try {
+        localStorage.setItem('auth_token', token);
+        const biz =
+          body?.profile?.business_id ||
+          body?.profile?.id ||
+          body?.business_id ||
+          body?.data?.business_id;
+        if (biz) localStorage.setItem('business_id', String(biz));
+      } catch {}
 
-      push({ title: 'Welcome back', description: 'Logged in successfully.' });
       router.replace('/dashboard');
-    } catch (err: any) {
-      console.error(err);
-      push({ title: 'Login error', description: err?.message || 'Please try again.', tone: 'error' });
-    } finally {
+    } catch (e: any) {
+      setErr(String(e?.message || e));
       setLoading(false);
     }
-  }, [email, password, loading, push, router]);
+  }
 
   return (
-    <main style={styles.main}>
-      <section style={styles.card} aria-label="Login">
-        <h1 style={styles.h1}>Log in</h1>
-        <form onSubmit={submit} style={styles.form}>
-          <label style={styles.label}>
-            <span style={styles.labelText}>Email</span>
+    <div style={{
+      minHeight: '100vh',
+      display: 'grid',
+      placeItems: 'center',
+      background: colors.bg,
+      color: colors.text,
+      padding: 16
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: 440,
+        background: colors.card,
+        border: `1px solid ${colors.border}`,
+        borderRadius: 16,
+        padding: 24,
+        boxShadow: '0 8px 30px rgba(0,0,0,0.25)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <span style={{ color: colors.brand, fontSize: 22 }}>𝌆</span>
+          <div style={{ fontWeight: 800, letterSpacing: 0.3 }}>Enrich</div>
+        </div>
+
+        <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800 }}>Sign in</h1>
+        <div style={{ color: colors.sub, fontSize: 14, marginBottom: 16 }}>Access your dashboard</div>
+
+        {err && (
+          <div style={{
+            background: '#2a1719',
+            border: '1px solid #5a2b30',
+            color: colors.danger,
+            padding: '10px 12px',
+            borderRadius: 10,
+            fontSize: 13,
+            marginBottom: 12
+          }}>
+            {err}
+          </div>
+        )}
+
+        <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12 }}>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 13, color: colors.sub }}>Email</span>
             <input
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              style={inputStyle}
               placeholder="you@company.com"
-              autoComplete="email"
-              style={styles.input}
             />
           </label>
-          <label style={styles.label}>
-            <span style={styles.labelText}>Password</span>
+
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 13, color: colors.sub }}>Password</span>
             <input
               type="password"
               required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
               autoComplete="current-password"
-              style={styles.input}
+              value={pwd}
+              onChange={(e) => setPwd(e.target.value)}
+              style={inputStyle}
+              placeholder="••••••••"
             />
           </label>
-          <button type="submit" disabled={loading} style={styles.primaryBtn} aria-busy={loading}>
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              padding: '10px 12px',
+              borderRadius: 10,
+              border: `1px solid ${colors.brand}`,
+              background: loading ? '#6f58a8' : colors.brand,
+              color: '#fff',
+              fontWeight: 800,
+              cursor: loading ? 'progress' : 'pointer'
+            }}
+          >
             {loading ? 'Logging in…' : 'Log in'}
           </button>
         </form>
-        <p style={styles.helper}>
-          Don’t have an account?{' '}
-          <a href="/signup" style={styles.link}>Create one</a>
-        </p>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  main: { minHeight: '100svh', display: 'grid', placeItems: 'center', padding: 24 },
-  card: { width: '100%', maxWidth: 420, background: 'var(--card)', border: '1px solid var(--card-bd)', borderRadius: 12, padding: 24 },
-  h1: { margin: '0 0 14px', fontSize: 24, color: 'var(--fg)' },
-  form: { display: 'grid', gap: 12 },
-  label: { display: 'grid', gap: 6 },
-  labelText: { color: 'var(--fg)', fontSize: 14, opacity: 0.9 },
-  input: { color: 'var(--fg)', background: 'var(--input-bg)', border: '1px solid var(--input-bd)', borderRadius: 8, padding: '10px 12px' },
-  primaryBtn: { padding: '10px 14px', borderRadius: 10, border: '1px solid #2a2a2a', background: 'linear-gradient(180deg,#1c1c1f,#121214)', color: '#fff' },
-  link: { color: 'var(--link)' },
-  helper: { marginTop: 12, opacity: 0.9 },
+const inputStyle: React.CSSProperties = {
+  padding: '10px 12px',
+  borderRadius: 10,
+  border: '1px solid #2a2f3a',
+  background: '#0f131a',
+  color: '#e9eaf0',
+  outline: 'none',
+  fontSize: 14,
 };
