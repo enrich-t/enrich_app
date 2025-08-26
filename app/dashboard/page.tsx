@@ -118,8 +118,18 @@ const colors = {
 function H1({ children }: { children: React.ReactNode }) {
   return <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: 0.2, margin: '4px 0 6px' }}>{children}</h1>;
 }
-function Muted({ children }: { children: React.ReactNode }) {
-  return <div style={{ color: colors.sub, fontSize: 14 }}>{children}</div>;
+function Muted({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div style={{ color: colors.sub, fontSize: 14, ...(style || {}) }}>
+      {children}
+    </div>
+  );
 }
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -195,7 +205,7 @@ function GrowthStageCard({
         <Badge tone="purple">Current Stage</Badge>
       </div>
 
-      <Muted style={{ marginTop: 8 as any }}>
+      <Muted style={{ marginTop: 8 }}>
         This claim is backed by one example or piece of evidence.
       </Muted>
 
