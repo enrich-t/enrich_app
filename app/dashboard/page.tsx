@@ -7,10 +7,10 @@ import ReportsTable, { Report, ReportStatus } from '../../components/ReportsTabl
 import GenerateReportButton from '../../components/GenerateReportButton';
 import { getToken, getBusinessId } from '../../components/auth';
 import FigmaDashboardShell from '../../components/FigmaDashboardShell';
+import { apiFetch } from '../../components/api';
 
 type ApiListResponse = unknown;
 
-// Read env safely
 const ENV_BIZ =
   typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === 'string'
     ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string)
@@ -82,21 +82,12 @@ function normalizeReports(payload: any): Report[] {
   });
 }
 
-function buildHeaders(base?: Record<string, string>): Record<string, string> {
-  return { ...(base ?? {}) };
-}
-
 async function fetchReports(
   businessId: string,
-  token?: string,
   signal?: AbortSignal
 ): Promise<Report[]> {
-  const headers = buildHeaders({ 'Content-Type': 'application/json' });
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const res = await fetch(`/api/reports/list/${encodeURIComponent(String(businessId))}`, {
+  const res = await apiFetch(`/api/reports/list/${encodeURIComponent(String(businessId))}`, {
     method: 'GET',
-    headers,
     signal,
     cache: 'no-store',
   });
@@ -150,14 +141,13 @@ function DashboardContent() {
 
   // Load reports
   useEffect(() => {
-    const token = getToken() || undefined;
     if (!businessId) {
       setLoading(false);
       return;
     }
     const ac = new AbortController();
     setLoading(true);
-    fetchReports(businessId, token, ac.signal)
+    fetchReports(businessId, ac.signal)
       .then((data) => setReports(Array.isArray(data) ? data : []))
       .catch((err) => {
         console.error('[dashboard] list error', err);
@@ -175,8 +165,7 @@ function DashboardContent() {
     () => async () => {
       if (!businessId) return;
       try {
-        const token = getToken() || undefined;
-        const data = await fetchReports(businessId, token);
+        const data = await fetchReports(businessId);
         setReports(Array.isArray(data) ? data : []);
         push({ title: 'Refreshed', description: 'Report list updated.' });
       } catch (err: any) {
@@ -208,9 +197,7 @@ function DashboardContent() {
       let business_name: string | undefined;
       let requested_by: string | undefined;
       try {
-        const meRes = await fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-        });
+        const meRes = await apiFetch('/api/auth/me');
         if (meRes.ok) {
           const me = await meRes.json().catch(() => null);
           const prof = me?.profile ?? me?.data ?? me ?? {};
@@ -221,7 +208,7 @@ function DashboardContent() {
         /* ignore */
       }
 
-      // Universal payload (snake + camel) to satisfy most backends
+      // Universal payload (snake + camel)
       const payload: Record<string, any> = {
         business_id: String(businessId),
         businessId: String(businessId),
@@ -232,16 +219,8 @@ function DashboardContent() {
         source: 'dashboard',
       };
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        'Idempotency-Key': `dash-${businessId}-${Date.now()}`,
-      };
-
-      const res = await fetch('/api/reports/generate-business-overview', {
+      const res = await apiFetch('/api/reports/generate-business-overview', {
         method: 'POST',
-        headers,
         body: JSON.stringify(payload),
       });
 
@@ -257,37 +236,26 @@ function DashboardContent() {
     [businessId, push, router, onRefresh]
   );
 
-  // Diagnostics: /auth/me, list, generate — prints status + snippet
+  // Diagnostics: show statuses + snippet; auto-redirect handled by apiFetch
   const runDiagnostics = useMemo(
     () => async () => {
-      const token = getToken();
       const biz = businessId || '(none)';
       try {
-        const hGet: Record<string, string> = {};
-        if (token) hGet['Authorization'] = `Bearer ${token}`;
-
-        const me = await fetch('/api/auth/me', { headers: hGet });
+        const me = await apiFetch('/api/auth/me');
         const meTxt = await me.text();
 
-        const list = await fetch(`/api/reports/list/${encodeURIComponent(biz)}`, { headers: hGet });
+        const list = await apiFetch(`/api/reports/list/${encodeURIComponent(biz)}`);
         const listTxt = await list.text();
 
-        const hPost: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) {
-          hPost['Authorization'] = `Bearer ${token}`;
-          hPost['Accept'] = 'application/json';
-          hPost['Idempotency-Key'] = `dash-${biz}-${Date.now()}`;
-        }
-        const gen = await fetch('/api/reports/generate-business-overview', {
+        const gen = await apiFetch('/api/reports/generate-business-overview', {
           method: 'POST',
-          headers: hPost,
           body: JSON.stringify({ business_id: String(biz), report_type: 'business_overview' }),
         });
         const genTxt = await gen.text();
 
         setDiag(
           [
-            `Token present: ${!!token} (len=${token ? token.length : 0})`,
+            `Token present: ${!!getToken()} (len=${getToken()?.length || 0})`,
             `Business ID: ${biz}`,
             `GET /api/auth/me -> ${me.status} ${me.statusText}`,
             (meTxt || '').slice(0, 200),
