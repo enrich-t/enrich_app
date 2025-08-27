@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../components/api';
 import { getToken, getBusinessId } from '../../components/auth';
@@ -108,7 +108,7 @@ const colors = {
   border: '#252a34',
   text: '#e9eaf0',
   sub: '#a7adbb',
-  brand: '#9b7bd1', // lavender purple from your screenshots
+  brand: '#9b7bd1', // lavender purple
   success: '#8bb26a',
   warn: '#e4c465',
   review: '#9a7ab8',
@@ -180,6 +180,104 @@ function IconRefresh({ size = 18 }: { size?: number }) {
         fill={colors.sub}
       />
     </svg>
+  );
+}
+
+/* -------------------- dropdown -------------------- */
+
+function useClickAway<T extends HTMLElement>(onAway: () => void) {
+  const ref = useRef<T | null>(null);
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) onAway();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onAway();
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onAway]);
+  return ref;
+}
+
+function Dropdown({
+  button,
+  children,
+  align = 'left',
+}: {
+  button: React.ReactNode;
+  children: React.ReactNode;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useClickAway<HTMLDivElement>(() => setOpen(false));
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={secondaryBtn}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        {button}
+        <span style={{ marginLeft: 6, opacity: 0.8 }}>▾</span>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            [align]: 0,
+            background: '#0f131a',
+            border: `1px solid ${colors.border}`,
+            borderRadius: 10,
+            minWidth: 200,
+            zIndex: 30,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            overflow: 'hidden',
+          } as React.CSSProperties}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      role="menuitem"
+      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'left',
+        padding: '10px 12px',
+        border: 'none',
+        background: 'transparent',
+        color: disabled ? '#586074' : colors.text,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        borderBottom: `1px solid ${colors.border}`,
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -309,7 +407,7 @@ function TransparencyCard({ data }: { data: Breakdown }) {
           <button onClick={() => setMode('bar')} style={modeBtn(mode === 'bar')}>Bar</button>
         </div>
       </div>
-      <Muted style={{ marginTop: 6 as any }}>
+      <Muted style={{ marginTop: 6 }}>
         {data.asOf ? `Based on your most recent report from ${data.asOf}` : `Based on your most recent report`}
       </Muted>
 
@@ -405,6 +503,14 @@ function ReportRow({ r }: { r: Report }) {
   const dt = created.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   const statusTone = r.status === 'ready' ? 'gold' : r.status === 'failed' ? 'purple' : 'default';
 
+  const hasPDF = !!(r.pdf_url || r.export_link);
+  const hasCSV = !!r.csv_url;
+  const hasJSON = !!r.json_url;
+
+  const open = (href?: string | null) => href && window.open(href, '_blank', 'noopener,noreferrer');
+
+  const comingSoon = (what: string) => alert(`${what} preview is coming soon ✨`);
+
   return (
     <div
       style={{
@@ -428,27 +534,20 @@ function ReportRow({ r }: { r: Report }) {
       </div>
 
       <div style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-        <a
-          href={r.pdf_url ?? r.export_link ?? '#'}
-          target="_blank"
-          rel="noreferrer"
-          style={secondaryBtn}
-          aria-disabled={!r.pdf_url && !r.export_link}
-        >
-          ⬇️ Download PDF
-        </a>
-        <button style={ghostBtn} onClick={() => alert('Export as Social – coming soon')}>
-          🔗 Export as Social
-        </button>
-        <a
-          href={r.json_url ?? '#'}
-          target="_blank"
-          rel="noreferrer"
-          style={ghostBtn}
-          aria-disabled={!r.json_url}
-        >
-          👁️ View
-        </a>
+        {/* Download dropdown */}
+        <Dropdown button={<>Download</>}>
+          <MenuItem disabled={!hasPDF} onClick={() => open(r.pdf_url ?? r.export_link)}>⬇️ PDF</MenuItem>
+          <MenuItem disabled={!hasCSV} onClick={() => open(r.csv_url)}>📊 CSV</MenuItem>
+          <MenuItem disabled={!hasJSON} onClick={() => open(r.json_url)}>🧾 JSON</MenuItem>
+        </Dropdown>
+
+        {/* View as dropdown */}
+        <Dropdown button={<>View as</>}>
+          <MenuItem disabled={!hasPDF} onClick={() => open(r.pdf_url ?? r.export_link)}>🖨️ PDF</MenuItem>
+          <MenuItem onClick={() => comingSoon('Facebook Post')}>📘 Facebook Post</MenuItem>
+          <MenuItem onClick={() => comingSoon('Instagram Story')}>📸 Instagram Story</MenuItem>
+          <MenuItem onClick={() => comingSoon('LinkedIn Card')}>💼 LinkedIn Card</MenuItem>
+        </Dropdown>
       </div>
     </div>
   );
@@ -537,12 +636,11 @@ function DashboardContent() {
     fetchReports(businessId, ac.signal)
       .then((data) => {
         setReports(Array.isArray(data) ? data : []);
-        // derive transparency + growth from latest report content if present
         const latest = (data ?? [])[0];
         try {
-          // try read some fields from content (your generator can set these)
+          // derive from content (optional)
           // @ts-ignore
-          const content = latest?.content || null; // API may embed; otherwise ignore
+          const content = latest?.content || null;
           if (content) {
             const t = content.transparency || content.score || {};
             const brk: Breakdown = {
@@ -595,7 +693,6 @@ function DashboardContent() {
         alert(`Generate failed: ${res.status} ${res.statusText}\n${txt.slice(0, 300)}`);
         return;
       }
-      // quick refresh
       await onRefresh();
     },
     [businessId, router, onRefresh]
