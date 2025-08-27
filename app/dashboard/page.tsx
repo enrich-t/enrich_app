@@ -17,6 +17,8 @@ type Report = {
   export_link: string | null;
 };
 
+type SocialMode = 'pdf' | 'facebook' | 'instagram' | 'linkedin';
+
 const ENV_BIZ =
   typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === 'string'
     ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string)
@@ -94,10 +96,27 @@ async function fetchReports(businessId: string, signal?: AbortSignal): Promise<R
   const raw = await res.text();
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${raw}`);
   let json: any = [];
-  try {
-    json = JSON.parse(raw);
-  } catch {}
+  try { json = JSON.parse(raw); } catch {}
   return normalizeReports(json);
+}
+
+async function fetchReportContent(r: Report): Promise<any | null> {
+  // Prefer the JSON url if available; else hit the backend by id to get content
+  try {
+    if (r.json_url) {
+      const res = await apiFetch(r.json_url, {}, { noAuthRedirect: true }); // may be public
+      const txt = await res.text();
+      return res.ok ? JSON.parse(txt) : null;
+    } else {
+      const res = await apiFetch(`/api/reports/${encodeURIComponent(r.id)}`);
+      const txt = await res.text();
+      if (!res.ok) return null;
+      const data = JSON.parse(txt);
+      return data?.report?.content ?? null;
+    }
+  } catch {
+    return null;
+  }
 }
 
 /* -------------------- simple UI atoms -------------------- */
@@ -237,7 +256,7 @@ function Dropdown({
             background: '#0f131a',
             border: `1px solid ${colors.border}`,
             borderRadius: 10,
-            minWidth: 200,
+            minWidth: 220,
             zIndex: 30,
             boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
             overflow: 'hidden',
@@ -278,6 +297,207 @@ function MenuItem({
     >
       {children}
     </button>
+  );
+}
+
+/* -------------------- Modal + Previews -------------------- */
+
+function Modal({
+  open,
+  onClose,
+  children,
+  width = 920,
+  height = 640,
+  title,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  width?: number;
+  height?: number;
+  title?: string;
+}) {
+  const ref = useClickAway<HTMLDivElement>(onClose);
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.55)',
+        zIndex: 1000,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        ref={ref}
+        style={{
+          width,
+          maxWidth: '100%',
+          height,
+          maxHeight: '100%',
+          background: colors.card,
+          border: `1px solid ${colors.border}`,
+          borderRadius: 14,
+          boxShadow: '0 10px 40px rgba(0,0,0,0.45)',
+          display: 'grid',
+          gridTemplateRows: 'auto 1fr',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '10px 12px',
+            borderBottom: `1px solid ${colors.border}`,
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ fontWeight: 800 }}>{title ?? 'Preview'}</div>
+          <button onClick={onClose} style={ghostBtn} aria-label="Close">Close</button>
+        </div>
+        <div style={{ overflow: 'auto', background: '#0e1117' }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function PdfPreview({ url }: { url: string }) {
+  // Render PDF in an iframe. Most browsers support inline PDF viewing.
+  return (
+    <iframe
+      src={url}
+      style={{ width: '100%', height: '100%', border: 'none', background: '#1a1f29' }}
+      title="PDF Preview"
+    />
+  );
+}
+
+// very small helpers to extract a title/summary from content
+function pickTitle(c: any): string {
+  if (!c) return 'Business Overview';
+  return c.title || c.name || 'Business Overview';
+}
+function pickSummary(c: any): string {
+  if (!c) return 'Auto-generated overview.';
+  // try different fields
+  const s =
+    c.summary ||
+    c.description ||
+    (Array.isArray(c.sections) && c.sections.length ? c.sections[0].body : '') ||
+    '';
+  return String(s || 'Auto-generated overview.');
+}
+
+function FacebookPreview({ content }: { content: any }) {
+  // 1200×630 approx aspect
+  return (
+    <div style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
+      <div
+        style={{
+          width: 1000,
+          height: 525,
+          background: '#1b2330',
+          border: `1px solid ${colors.border}`,
+          borderRadius: 16,
+          overflow: 'hidden',
+          display: 'grid',
+          gridTemplateRows: '1fr auto',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+        }}
+      >
+        <div style={{ padding: 24 }}>
+          <div style={{ fontSize: 26, fontWeight: 900, marginBottom: 10 }}>{pickTitle(content)}</div>
+          <div style={{ color: colors.sub, fontSize: 16, lineHeight: 1.45, maxWidth: 820 }}>
+            {pickSummary(content)}
+          </div>
+        </div>
+        <div style={{ padding: 16, borderTop: `1px solid ${colors.border}`, display: 'flex', gap: 10 }}>
+          <span style={{ background: colors.brand, color: '#fff', padding: '8px 12px', borderRadius: 10, fontWeight: 800 }}>Enrich</span>
+          <span style={{ color: colors.sub, fontSize: 14 }}>Generated report • {new Date().toLocaleDateString()}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InstagramStoryPreview({ content }: { content: any }) {
+  // 1080×1920 aspect; scale down
+  const W = 360, H = 640;
+  return (
+    <div style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
+      <div
+        style={{
+          width: W,
+          height: H,
+          background: 'linear-gradient(160deg,#1a1630,#2b1f4a 60%,#0f0f1b)',
+          borderRadius: 24,
+          border: `1px solid ${colors.border}`,
+          overflow: 'hidden',
+          position: 'relative',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+          color: '#fff',
+        }}
+      >
+        <div style={{ position: 'absolute', inset: 0, padding: 18, display: 'grid', gridTemplateRows: 'auto 1fr auto', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>Enrich</div>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>{new Date().toLocaleDateString()}</div>
+          </div>
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 22, lineHeight: 1.15, marginBottom: 10 }}>{pickTitle(content)}</div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.45, color: '#e6dbff' }}>{pickSummary(content)}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ background: '#9b7bd1', color: '#fff', padding: '8px 12px', borderRadius: 12, fontWeight: 800, fontSize: 12 }}>Learn More</div>
+            <div style={{ border: '1px solid #8b76c8', color: '#e6dbff', padding: '8px 12px', borderRadius: 12, fontWeight: 800, fontSize: 12 }}>View Report</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LinkedInCardPreview({ content }: { content: any }) {
+  // 1200×627-ish; we’ll go 900×480
+  return (
+    <div style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
+      <div
+        style={{
+          width: 900,
+          height: 480,
+          background: '#0d1117',
+          border: `1px solid ${colors.border}`,
+          borderRadius: 16,
+          overflow: 'hidden',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.45)',
+          display: 'grid',
+          gridTemplateColumns: '2fr 1.1fr',
+        }}
+      >
+        <div style={{ padding: 24 }}>
+          <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 10 }}>{pickTitle(content)}</div>
+          <div style={{ color: colors.sub, fontSize: 15, lineHeight: 1.5, maxWidth: 560 }}>{pickSummary(content)}</div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+            <span style={{ background: '#2b3750', color: '#cfe2ff', padding: '6px 10px', borderRadius: 8, fontWeight: 800 }}>Compliance</span>
+            <span style={{ background: '#343a40', color: '#f1f3f5', padding: '6px 10px', borderRadius: 8, fontWeight: 800 }}>Transparency</span>
+          </div>
+        </div>
+        <div style={{ background: 'linear-gradient(160deg,#2d1f49,#162337)', position: 'relative' }}>
+          <div style={{
+            position: 'absolute', inset: 14, borderRadius: 12,
+            border: '1px dashed #53617c'
+          }}>
+            <div style={{ position: 'absolute', bottom: 12, right: 12, color: '#b1c5ff', fontWeight: 800 }}>Enrich</div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -469,10 +689,12 @@ function ReportsList({
   reports,
   onRefresh,
   onGenerate,
+  onOpenPreview,
 }: {
   reports: Report[];
   onRefresh: () => void;
   onGenerate: () => void;
+  onOpenPreview: (r: Report, mode: SocialMode) => void;
 }) {
   return (
     <Card>
@@ -491,14 +713,14 @@ function ReportsList({
         {reports.length === 0 ? (
           <div style={{ color: colors.sub, fontSize: 14 }}>No reports yet. Generate your first report.</div>
         ) : (
-          reports.map((r) => <ReportRow key={r.id} r={r} />)
+          reports.map((r) => <ReportRow key={r.id} r={r} onOpenPreview={onOpenPreview} />)
         )}
       </div>
     </Card>
   );
 }
 
-function ReportRow({ r }: { r: Report }) {
+function ReportRow({ r, onOpenPreview }: { r: Report; onOpenPreview: (r: Report, mode: SocialMode) => void }) {
   const created = new Date(r.created_at);
   const dt = created.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   const statusTone = r.status === 'ready' ? 'gold' : r.status === 'failed' ? 'purple' : 'default';
@@ -507,9 +729,11 @@ function ReportRow({ r }: { r: Report }) {
   const hasCSV = !!r.csv_url;
   const hasJSON = !!r.json_url;
 
-  const open = (href?: string | null) => href && window.open(href, '_blank', 'noopener,noreferrer');
-
-  const comingSoon = (what: string) => alert(`${what} preview is coming soon ✨`);
+  const download = (href?: string | null) => {
+    if (!href) return;
+    // open in same window (navigates); let browser download manager handle it
+    window.location.href = href;
+  };
 
   return (
     <div
@@ -536,17 +760,17 @@ function ReportRow({ r }: { r: Report }) {
       <div style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
         {/* Download dropdown */}
         <Dropdown button={<>Download</>}>
-          <MenuItem disabled={!hasPDF} onClick={() => open(r.pdf_url ?? r.export_link)}>⬇️ PDF</MenuItem>
-          <MenuItem disabled={!hasCSV} onClick={() => open(r.csv_url)}>📊 CSV</MenuItem>
-          <MenuItem disabled={!hasJSON} onClick={() => open(r.json_url)}>🧾 JSON</MenuItem>
+          <MenuItem disabled={!hasPDF} onClick={() => download(r.pdf_url ?? r.export_link)}>⬇️ PDF</MenuItem>
+          <MenuItem disabled={!hasCSV} onClick={() => download(r.csv_url)}>📊 CSV</MenuItem>
+          <MenuItem disabled={!hasJSON} onClick={() => download(r.json_url)}>🧾 JSON</MenuItem>
         </Dropdown>
 
-        {/* View as dropdown */}
+        {/* View as dropdown (opens modal in same window) */}
         <Dropdown button={<>View as</>}>
-          <MenuItem disabled={!hasPDF} onClick={() => open(r.pdf_url ?? r.export_link)}>🖨️ PDF</MenuItem>
-          <MenuItem onClick={() => comingSoon('Facebook Post')}>📘 Facebook Post</MenuItem>
-          <MenuItem onClick={() => comingSoon('Instagram Story')}>📸 Instagram Story</MenuItem>
-          <MenuItem onClick={() => comingSoon('LinkedIn Card')}>💼 LinkedIn Card</MenuItem>
+          <MenuItem disabled={!hasPDF} onClick={() => onOpenPreview(r, 'pdf')}>🖨️ PDF</MenuItem>
+          <MenuItem onClick={() => onOpenPreview(r, 'facebook')}>📘 Facebook Post</MenuItem>
+          <MenuItem onClick={() => onOpenPreview(r, 'instagram')}>📸 Instagram Story</MenuItem>
+          <MenuItem onClick={() => onOpenPreview(r, 'linkedin')}>💼 LinkedIn Card</MenuItem>
         </Dropdown>
       </div>
     </div>
@@ -599,6 +823,13 @@ function DashboardContent() {
   const [reports, setReports] = useState<Report[]>([]);
   const [diag, setDiag] = useState<string>('');
   const [showDiag, setShowDiag] = useState<boolean>(false);
+
+  // Preview modal state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<SocialMode>('pdf');
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [previewContent, setPreviewContent] = useState<any>(null);
+  const [previewTitle, setPreviewTitle] = useState<string>('Preview');
 
   // Auth guard
   useEffect(() => {
@@ -698,6 +929,38 @@ function DashboardContent() {
     [businessId, router, onRefresh]
   );
 
+  const onOpenPreview = useMemo(
+    () => async (r: Report, mode: SocialMode) => {
+      setPreviewMode(mode);
+      setPreviewTitle(
+        mode === 'pdf'
+          ? 'PDF Preview'
+          : mode === 'facebook'
+          ? 'Facebook Post Preview'
+          : mode === 'instagram'
+          ? 'Instagram Story Preview'
+          : 'LinkedIn Card Preview'
+      );
+
+      if (mode === 'pdf') {
+        const url = r.pdf_url ?? r.export_link;
+        if (!url) { alert('No PDF available for this report yet.'); return; }
+        setPreviewUrl(url);
+        setPreviewContent(null);
+        setPreviewOpen(true);
+        return;
+      }
+
+      // Social previews need content
+      const content = await fetchReportContent(r);
+      if (!content) { alert('No JSON content available yet for this report.'); return; }
+      setPreviewContent(content);
+      setPreviewUrl('');
+      setPreviewOpen(true);
+    },
+    []
+  );
+
   const runDiagnostics = useMemo(
     () => async () => {
       const biz = businessId || '(none)';
@@ -771,7 +1034,7 @@ function DashboardContent() {
         </div>
 
         <div style={{ marginTop: 18 }}>
-          <ReportsList reports={reports} onRefresh={onRefresh} onGenerate={onGenerate} />
+          <ReportsList reports={reports} onRefresh={onRefresh} onGenerate={onGenerate} onOpenPreview={onOpenPreview} />
         </div>
 
         <div style={{ marginTop: 18 }}>
@@ -785,6 +1048,19 @@ function DashboardContent() {
           )}
         </div>
       </main>
+
+      <Modal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={previewTitle}
+        width={previewMode === 'instagram' ? 420 : 980}
+        height={previewMode === 'instagram' ? 780 : 720}
+      >
+        {previewMode === 'pdf' && previewUrl && <PdfPreview url={previewUrl} />}
+        {previewMode === 'facebook' && <FacebookPreview content={previewContent} />}
+        {previewMode === 'instagram' && <InstagramStoryPreview content={previewContent} />}
+        {previewMode === 'linkedin' && <LinkedInCardPreview content={previewContent} />}
+      </Modal>
     </div>
   );
 }
