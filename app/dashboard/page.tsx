@@ -127,28 +127,17 @@ const colors = {
   border: '#252a34',
   text: '#e9eaf0',
   sub: '#a7adbb',
-  brand: '#9b7bd1', // lavender purple
+  brand: '#9b7bd1',
   success: '#8bb26a',
   warn: '#e4c465',
   review: '#9a7ab8',
-  badge: '#e2c24e',
 };
 
 function H1({ children }: { children: React.ReactNode }) {
   return <h1 style={{ fontSize: 30, fontWeight: 700, letterSpacing: 0.2, margin: '4px 0 6px' }}>{children}</h1>;
 }
-function Muted({
-  children,
-  style,
-}: {
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-}) {
-  return (
-    <div style={{ color: colors.sub, fontSize: 14, ...(style || {}) }}>
-      {children}
-    </div>
-  );
+function Muted({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <div style={{ color: colors.sub, fontSize: 14, ...(style || {}) }}>{children}</div>;
 }
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
@@ -201,6 +190,36 @@ function IconRefresh({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+const primaryBtn: React.CSSProperties = {
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: `1px solid ${colors.brand}`,
+  background: colors.brand,
+  color: '#fff',
+  fontWeight: 700,
+  cursor: 'pointer',
+};
+
+const secondaryBtn: React.CSSProperties = {
+  padding: '8px 12px',
+  borderRadius: 10,
+  border: `1px solid ${colors.border}`,
+  background: '#ffffff10',
+  color: colors.text,
+  fontWeight: 700,
+  textDecoration: 'none',
+};
+
+const ghostBtn: React.CSSProperties = {
+  padding: '8px 10px',
+  borderRadius: 10,
+  border: `1px solid ${colors.border}`,
+  background: 'transparent',
+  color: colors.sub,
+  fontWeight: 700,
+  cursor: 'pointer',
+};
 
 /* -------------------- dropdown -------------------- */
 
@@ -368,7 +387,6 @@ function Modal({
 }
 
 function PdfPreview({ url }: { url: string }) {
-  // Render PDF in an iframe. Most browsers support inline PDF viewing.
   return (
     <iframe
       src={url}
@@ -378,14 +396,12 @@ function PdfPreview({ url }: { url: string }) {
   );
 }
 
-// very small helpers to extract a title/summary from content
 function pickTitle(c: any): string {
   if (!c) return 'Business Overview';
   return c.title || c.name || 'Business Overview';
 }
 function pickSummary(c: any): string {
   if (!c) return 'Auto-generated overview.';
-  // try different fields
   const s =
     c.summary ||
     c.description ||
@@ -395,7 +411,6 @@ function pickSummary(c: any): string {
 }
 
 function FacebookPreview({ content }: { content: any }) {
-  // 1200×630 approx aspect
   return (
     <div style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
       <div
@@ -427,7 +442,6 @@ function FacebookPreview({ content }: { content: any }) {
 }
 
 function InstagramStoryPreview({ content }: { content: any }) {
-  // 1080×1920 aspect; scale down
   const W = 360, H = 640;
   return (
     <div style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
@@ -464,7 +478,6 @@ function InstagramStoryPreview({ content }: { content: any }) {
 }
 
 function LinkedInCardPreview({ content }: { content: any }) {
-  // 1200×627-ish; we’ll go 900×480
   return (
     <div style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
       <div
@@ -731,7 +744,6 @@ function ReportRow({ r, onOpenPreview }: { r: Report; onOpenPreview: (r: Report,
 
   const download = (href?: string | null) => {
     if (!href) return;
-    // open in same window (navigates); let browser download manager handle it
     window.location.href = href;
   };
 
@@ -758,14 +770,12 @@ function ReportRow({ r, onOpenPreview }: { r: Report; onOpenPreview: (r: Report,
       </div>
 
       <div style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-        {/* Download dropdown */}
         <Dropdown button={<>Download</>}>
           <MenuItem disabled={!hasPDF} onClick={() => download(r.pdf_url ?? r.export_link)}>⬇️ PDF</MenuItem>
           <MenuItem disabled={!hasCSV} onClick={() => download(r.csv_url)}>📊 CSV</MenuItem>
           <MenuItem disabled={!hasJSON} onClick={() => download(r.json_url)}>🧾 JSON</MenuItem>
         </Dropdown>
 
-        {/* View as dropdown (opens modal in same window) */}
         <Dropdown button={<>View as</>}>
           <MenuItem disabled={!hasPDF} onClick={() => onOpenPreview(r, 'pdf')}>🖨️ PDF</MenuItem>
           <MenuItem onClick={() => onOpenPreview(r, 'facebook')}>📘 Facebook Post</MenuItem>
@@ -776,36 +786,6 @@ function ReportRow({ r, onOpenPreview }: { r: Report; onOpenPreview: (r: Report,
     </div>
   );
 }
-
-const primaryBtn: React.CSSProperties = {
-  padding: '8px 12px',
-  borderRadius: 10,
-  border: `1px solid ${colors.brand}`,
-  background: colors.brand,
-  color: '#fff',
-  fontWeight: 700,
-  cursor: 'pointer',
-};
-
-const secondaryBtn: React.CSSProperties = {
-  padding: '8px 12px',
-  borderRadius: 10,
-  border: `1px solid ${colors.border}`,
-  background: '#ffffff10',
-  color: colors.text,
-  fontWeight: 700,
-  textDecoration: 'none',
-};
-
-const ghostBtn: React.CSSProperties = {
-  padding: '8px 10px',
-  borderRadius: 10,
-  border: `1px solid ${colors.border}`,
-  background: 'transparent',
-  color: colors.sub,
-  fontWeight: 700,
-  cursor: 'pointer',
-};
 
 /* -------------------- Page -------------------- */
 
@@ -951,7 +931,6 @@ function DashboardContent() {
         return;
       }
 
-      // Social previews need content
       const content = await fetchReportContent(r);
       if (!content) { alert('No JSON content available yet for this report.'); return; }
       setPreviewContent(content);
@@ -993,61 +972,34 @@ function DashboardContent() {
     [businessId]
   );
 
-  /* --------------- layout --------------- */
+  /* --------------- content only (Shell supplies layout) --------------- */
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', minHeight: '100vh', background: colors.bg, color: colors.text }}>
-      {/* Sidebar */}
-      <aside
-        style={{
-          borderRight: `1px solid ${colors.border}`,
-          padding: '22px 14px',
-          position: 'sticky',
-          top: 0,
-          height: '100dvh',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, letterSpacing: 0.3, marginBottom: 18 }}>
-          <span style={{ color: colors.brand, fontSize: 22 }}>𝌆</span>
-          <div>Dashboard</div>
-        </div>
+    <>
+      <div style={{ marginBottom: 14 }}>
+        <H1>Welcome back, {profileName}</H1>
+        <Muted>Here’s what’s happening with your business today.</Muted>
+      </div>
 
-        <nav style={{ display: 'grid', gap: 8 }}>
-          <NavItem active icon="🏠" label="Overview" />
-          <NavItem icon="➕" label="Report Generator" onClick={onGenerate} />
-          <NavItem icon="📁" label="My Reports" onClick={onRefresh} />
-          <NavItem icon="🪙" label="AI Tokens" />
-          <NavItem icon="⚙️" label="Settings" />
-        </nav>
-      </aside>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, alignItems: 'start' }}>
+        <GrowthStageCard stage={growth.stage} progress={growth.progress} />
+        <TransparencyCard data={transparency} />
+      </div>
 
-      {/* Main */}
-      <main style={{ padding: '24px 26px', maxWidth: 1200, margin: '0 auto', width: '100%' }}>
-        <div style={{ marginBottom: 14 }}>
-          <H1>Welcome back, {profileName}</H1>
-          <Muted>Here’s what’s happening with your business today.</Muted>
-        </div>
+      <div style={{ marginTop: 18 }}>
+        <ReportsList reports={reports} onRefresh={onRefresh} onGenerate={onGenerate} onOpenPreview={onOpenPreview} />
+      </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, alignItems: 'start' }}>
-          <GrowthStageCard stage={growth.stage} progress={growth.progress} />
-          <TransparencyCard data={transparency} />
-        </div>
-
-        <div style={{ marginTop: 18 }}>
-          <ReportsList reports={reports} onRefresh={onRefresh} onGenerate={onGenerate} onOpenPreview={onOpenPreview} />
-        </div>
-
-        <div style={{ marginTop: 18 }}>
-          <button onClick={() => (showDiag ? setShowDiag(false) : (runDiagnostics(), setShowDiag(true)))} style={ghostBtn}>
-            {showDiag ? 'Hide Diagnostics' : 'Show Diagnostics'}
-          </button>
-          {showDiag && (
-            <Card style={{ marginTop: 10 }}>
-              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12.5 }}>{diag || 'Run to test endpoints.'}</pre>
-            </Card>
-          )}
-        </div>
-      </main>
+      <div style={{ marginTop: 18 }}>
+        <button onClick={() => (showDiag ? setShowDiag(false) : (runDiagnostics(), setShowDiag(true)))} style={ghostBtn}>
+          {showDiag ? 'Hide Diagnostics' : 'Show Diagnostics'}
+        </button>
+        {showDiag && (
+          <Card style={{ marginTop: 10 }}>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 12.5 }}>{diag || 'Run to test endpoints.'}</pre>
+          </Card>
+        )}
+      </div>
 
       <Modal
         open={previewOpen}
@@ -1061,40 +1013,6 @@ function DashboardContent() {
         {previewMode === 'instagram' && <InstagramStoryPreview content={previewContent} />}
         {previewMode === 'linkedin' && <LinkedInCardPreview content={previewContent} />}
       </Modal>
-    </div>
-  );
-}
-
-function NavItem({
-  active,
-  icon,
-  label,
-  onClick,
-}: {
-  active?: boolean;
-  icon: string;
-  label: string;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        width: '100%',
-        textAlign: 'left',
-        padding: '10px 12px',
-        borderRadius: 12,
-        border: `1px solid ${active ? colors.brand : colors.border}`,
-        background: active ? '#3d2f5a' : 'transparent',
-        color: active ? '#efe7ff' : colors.text,
-        cursor: 'pointer',
-      }}
-    >
-      <span>{icon}</span>
-      <span style={{ fontWeight: 700 }}>{label}</span>
-    </button>
+    </>
   );
 }
