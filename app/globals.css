@@ -1,10 +1,12 @@
 :root{
   --bg: #0b0c0d;
   --fg: #f5f7fa;
-  --muted: #a9b1bb;
-  --card: #111213;
-  --card-bd: #2a2a2a;
-  --link: #7fb5ff;
+  --muted: #b3bcc7;
+  --card: #121316;
+  --card-bd: #2b2e33;
+  --input-bg: #161a1f;
+  --input-bd: #3a3f46;
+  --link: #8fbfff;
   --focus: #3b82f6;
 }
 
@@ -15,15 +17,27 @@ body{
   background:var(--bg);
   color:var(--fg);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  color-scheme: dark;
 }
 
-/* Make form controls readable on dark bg */
-input,button,select,textarea{
-  color: var(--fg);
-  background: transparent;
+/* Ensure readable form controls on dark backgrounds */
+label, legend { color: var(--fg) }
+input, textarea, select {
+  color: var(--fg) !important;
+  background: var(--input-bg) !important;
+  border: 1px solid var(--input-bd) !important;
+  border-radius: 8px;
+  padding: 10px 12px;
 }
-input::placeholder, textarea::placeholder { color: #9aa3ad; }
+input::placeholder, textarea::placeholder { color: #9aa3ad }
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--fg) !important;
+  transition: background-color 9999s ease-in-out 0s;
+  box-shadow: 0 0 0px 1000px var(--input-bg) inset !important;
+}
 
-a{ color: var(--link); }
-button{ cursor: pointer; }
-:focus-visible{ outline: 2px solid var(--focus); outline-offset: 2px; }
+a{ color: var(--link) }
+button{ cursor: pointer }
+:focus-visible{ outline: 2px solid var(--focus); outline-offset: 2px }
