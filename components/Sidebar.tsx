@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { apiFetch } from './api';
+import { getToken } from './auth';
 
 const colors = {
   brand: '#9881b8',
@@ -12,36 +14,101 @@ const colors = {
   activeBg: '#2b2437',
 };
 
+type Profile = {
+  business_name?: string;
+  industry?: string;
+  brand_primary_color?: string;
+  brand_secondary_color?: string;
+  logo_url?: string;
+  credits_remaining?: number;
+};
+
 type Item = { href: string; icon: string; label: string };
 
 const NAV: Item[] = [
   { href: '/dashboard',  icon: '🏠', label: 'Overview' },
   { href: '/generate',   icon: '🧪', label: 'Report Generator' },
   { href: '/my-reports', icon: '📚', label: 'My Reports' },
-  // renamed here ↓
   { href: '/ai-tokens',  icon: '💳', label: 'Memberships' },
   { href: '/settings',   icon: '⚙️', label: 'Settings' },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      const t = getToken();
+      if (!t) return;
+      try {
+        const r = await apiFetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
+        const txt = await r.text();
+        let j: any = null;
+        try { j = JSON.parse(txt); } catch {}
+        if (r.ok) setProfile(j?.profile || {});
+      } catch { /* ignore */ }
+    };
+    load();
+  }, []);
 
   return (
     <>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          fontWeight: 800,
-          letterSpacing: 0.3,
-          marginBottom: 18,
-        }}
-      >
-        <span style={{ color: colors.brand, fontSize: 22 }}>𝌆</span>
-        <div>Dashboard</div>
-      </div>
+      {/* Header with business info */}
+      <Link href="/profile" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '12px',
+            borderRadius: 12,
+            border: `1px solid ${colors.border}`,
+            marginBottom: 18,
+            cursor: 'pointer',
+          }}
+        >
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: profile?.brand_primary_color || colors.brand,
+              display: 'grid',
+              placeItems: 'center',
+              color: '#fff',
+              fontWeight: 900,
+              fontSize: 18,
+              overflow: 'hidden',
+            }}
+          >
+            {profile?.logo_url ? (
+              <img
+                src={profile.logo_url}
+                alt="logo"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12 }}
+              />
+            ) : (
+              (profile?.business_name?.[0] || '🏢')
+            )}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 900, fontSize: 15 }}>
+              {profile?.business_name || 'Your Business'}
+            </div>
+            <div style={{ color: colors.sub, fontSize: 12 }}>
+              {profile?.industry || 'Industry'}
+            </div>
+            {profile?.credits_remaining !== undefined && (
+              <div style={{ marginTop: 2, fontSize: 12, color: colors.sub }}>
+                {profile.credits_remaining} credits left
+              </div>
+            )}
+          </div>
+        </div>
+      </Link>
 
+      {/* Nav */}
       <nav style={{ display: 'grid', gap: 8 }}>
         {NAV.map((item) => {
           const active = pathname === item.href;
@@ -73,6 +140,7 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* Logout */}
       <div style={{ marginTop: 18 }}>
         <button
           onClick={() => {
