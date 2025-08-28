@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { apiFetch } from './api';
@@ -21,6 +21,8 @@ type Profile = {
   brand_secondary_color?: string;
   logo_url?: string;
   credits_remaining?: number | string;
+  ai_credits?: number | string;
+  credits?: number | string;
 };
 
 type Item = { href: string; icon: string; label: string };
@@ -44,84 +46,42 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
-  const [loadingCredits, setLoadingCredits] = useState<boolean>(false);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
 
-  const extractCredits = (obj: any): number | null => {
-    if (!obj) return null;
-    // Try common locations/keys
-    const cands = [
-      obj.credits_remaining,
-      obj.remaining,
-      obj.credits, // some APIs
-      obj.balance?.credits_remaining,
-      obj.data?.credits_remaining,
-      obj.data?.remaining,
-      obj.profile?.credits_remaining,
-    ];
-    for (const c of cands) {
-      const n = asNumber(c);
-      if (n !== null) return n;
-    }
-    return null;
-  };
-
-  const loadProfile = useCallback(async () => {
-    const t = getToken();
-    if (!t) return;
-    try {
-      const r = await apiFetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
-      const txt = await r.text();
-      let j: any = null;
-      try { j = JSON.parse(txt); } catch {}
-      if (r.ok) {
-        const p: Profile = j?.profile || {};
-        setProfile(p);
-        const c = extractCredits(j) ?? extractCredits(p);
-        if (c !== null) setCredits(c);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  const loadCredits = useCallback(async () => {
-    const t = getToken();
-    if (!t) return;
-    setLoadingCredits(true);
-    try {
-      const r = await apiFetch('/api/tokens/balance', { method: 'GET', cache: 'no-store' });
-      const txt = await r.text();
-      let j: any = null;
-      try { j = JSON.parse(txt); } catch {}
-      if (r.ok) {
-        const c = extractCredits(j);
-        if (c !== null) setCredits(c);
-      }
-    } catch { /* ignore */ }
-    finally {
-      setLoadingCredits(false);
-    }
-  }, []);
-
-  // Initial load
   useEffect(() => {
-    loadProfile();
-    loadCredits();
-  }, [loadProfile, loadCredits]);
+    const load = async () => {
+      const t = getToken();
+      if (!t) return;
 
-  // Refresh when tab regains focus
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === 'visible') loadCredits();
+      try {
+        const r = await apiFetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
+        const txt = await r.text();
+        let j: any = null;
+        try { j = JSON.parse(txt); } catch {}
+        // debug so we see shape once in the browser (can remove later)
+        console.log('[sidebar]/api/auth/me →', j);
+
+        if (r.ok) {
+          const p: Profile = j?.profile || {};
+          setProfile(p);
+
+          // Extract any field that looks like credits
+          const c =
+            asNumber(p.credits_remaining) ??
+            asNumber(p.ai_credits) ??
+            asNumber(p.credits) ??
+            asNumber(j?.credits_remaining) ??
+            asNumber(j?.ai_credits) ??
+            asNumber(j?.credits);
+
+          if (c !== null) setCredits(c);
+        }
+      } catch {
+        /* ignore */
+      }
     };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, [loadCredits]);
 
-  // Light polling every 30s
-  useEffect(() => {
-    pollRef.current = setInterval(() => loadCredits(), 30000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [loadCredits]);
+    load();
+  }, []);
 
   const activeLinkStyle = (active: boolean): React.CSSProperties => ({
     display: 'flex',
@@ -141,7 +101,7 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Header with business info (clicks to /profile) */}
+      {/* Header with business info (clickable to /profile) */}
       <Link href="/profile" style={{ textDecoration: 'none', color: 'inherit' }}>
         <div
           style={{
@@ -188,27 +148,8 @@ export default function Sidebar() {
               {profile?.industry || 'Industry'}
             </div>
 
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: colors.text }}>
-                AI Credits: {credits != null ? credits : '—'}
-              </div>
-              <button
-                title="Refresh credits"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); loadCredits(); }}
-                style={{
-                  padding: '0 8px',
-                  height: 22,
-                  borderRadius: 8,
-                  border: `1px solid ${colors.border}`,
-                  background: 'transparent',
-                  color: colors.sub,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  lineHeight: '20px',
-                }}
-              >
-                {loadingCredits ? '…' : '↻'}
-              </button>
+            <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: colors.text }}>
+              AI Credits: {credits != null ? credits : '—'}
             </div>
           </div>
         </div>
