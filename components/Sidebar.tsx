@@ -92,6 +92,7 @@ export default function Sidebar() {
               (profile?.business_name?.[0] || '🏢')
             )}
           </div>
+
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 900, fontSize: 15 }}>
               {profile?.business_name || 'Your Business'}
@@ -100,8 +101,8 @@ export default function Sidebar() {
               {profile?.industry || 'Industry'}
             </div>
             {profile?.credits_remaining !== undefined && (
-              <div style={{ marginTop: 2, fontSize: 12, color: colors.sub }}>
-                {profile.credits_remaining} credits left
+              <div style={{ marginTop: 4, fontSize: 12, fontWeight: 700, color: colors.text }}>
+                AI Credits: {profile.credits_remaining}
               </div>
             )}
           </div>
