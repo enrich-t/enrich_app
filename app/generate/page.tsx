@@ -30,16 +30,10 @@ type GenerateResponse = {
   detail?: { ok?: boolean; code?: string; message?: string };
 };
 
-const COST_PER_REPORT = 1; // UI only
+const COST_PER_REPORT = 1;
 
-/* ---------------- token helpers (Supabase-aware) ---------------- */
+/* ---------------- Supabase-aware token helpers ---------------- */
 
-/**
- * Supabase stores the auth blob under a key like:
- *   sb-<project-ref>-auth-token
- * The value is JSON and usually contains:
- *   { currentSession: { access_token, refresh_token, ... }, ... }
- */
 function findSupabaseAuthKey(): string | null {
   try {
     for (let i = 0; i < localStorage.length; i++) {
@@ -61,15 +55,9 @@ function readSupabaseTokens():
     const raw = localStorage.getItem(key);
     if (!raw) return { accessToken: null, refreshToken: null, key };
     const parsed = JSON.parse(raw);
-    const accessToken =
-      parsed?.currentSession?.access_token ||
-      parsed?.access_token ||
-      null;
-    const refreshToken =
-      parsed?.currentSession?.refresh_token ||
-      parsed?.refresh_token ||
-      null;
-    return { accessToken: accessToken ?? null, refreshToken: refreshToken ?? null, key };
+    const accessToken = parsed?.currentSession?.access_token ?? parsed?.access_token ?? null;
+    const refreshToken = parsed?.currentSession?.refresh_token ?? parsed?.refresh_token ?? null;
+    return { accessToken, refreshToken, key };
   } catch {
     return { accessToken: null, refreshToken: null, key: null };
   }
@@ -82,18 +70,12 @@ function writeSupabaseAccessToken(newAccess: string) {
     const raw = localStorage.getItem(key);
     if (!raw) return;
     const parsed = JSON.parse(raw);
-    if (parsed?.currentSession) {
-      parsed.currentSession.access_token = newAccess;
-    } else {
-      parsed.access_token = newAccess;
-    }
+    if (parsed?.currentSession) parsed.currentSession.access_token = newAccess;
+    else parsed.access_token = newAccess;
     localStorage.setItem(key, JSON.stringify(parsed));
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
-/** Quick scan for any token-like string saved under common keys or JWT-looking values */
 function findAnyAccessToken(): string | null {
   try {
     const candidates = ['apiToken', 'api_token', 'access_token', 'sb-access-token', 'token'];
@@ -101,7 +83,6 @@ function findAnyAccessToken(): string | null {
       const v = localStorage.getItem(k);
       if (v && v.length > 10) return v;
     }
-    // JWT-looking fallback
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)!;
       const val = localStorage.getItem(key);
@@ -115,14 +96,11 @@ function findAnyAccessToken(): string | null {
 
 function setCommonAccessToken(newAccess: string) {
   try {
-    // Mirror into a few obvious places to satisfy any code paths:
     localStorage.setItem('access_token', newAccess);
     localStorage.setItem('apiToken', newAccess);
     localStorage.setItem('sb-access-token', newAccess);
     writeSupabaseAccessToken(newAccess);
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
 function clearAuthLocally() {
@@ -133,16 +111,14 @@ function clearAuthLocally() {
       localStorage.removeItem(k)
     );
     window.dispatchEvent(new CustomEvent('enrich:auth:signout'));
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
 function getBusinessId(): string | null {
   return process.env.NEXT_PUBLIC_BUSINESS_ID ?? null;
 }
 
-/* ---------------- toast hook ---------------- */
+/* ---------------- toasts ---------------- */
 
 function useToasts() {
   const [toasts, setToasts] = React.useState<
@@ -193,7 +169,7 @@ function useToasts() {
   return { push, ToastView };
 }
 
-/* ---------------- credits helpers ---------------- */
+/* ---------------- credits ---------------- */
 
 async function fetchCredits(token?: string | null): Promise<number | null> {
   try {
@@ -222,14 +198,8 @@ function writeCreditsEverywhere(remaining: number | null) {
   } catch {}
 }
 
-/* ---------------- fetch with auto-refresh ---------------- */
+/* ---------------- auth refresh + fetch ---------------- */
 
-/**
- * Attempts to refresh an access token if a refresh token is available in the
- * Supabase auth blob. Tries common backend endpoints without changing your routes:
- *   /api/auth/refresh   OR   /api/auth/refresh-token   OR   /api/auth/refresh_access_token
- * If none exist or all fail, returns null.
- */
 async function tryRefreshAccessToken(): Promise<string | null> {
   const supa = readSupabaseTokens();
   const refresh = supa?.refreshToken || null;
@@ -256,18 +226,15 @@ async function tryRefreshAccessToken(): Promise<string | null> {
         setCommonAccessToken(newAccess);
         return newAccess;
       }
-    } catch {
-      // try next
-    }
+    } catch {}
   }
   return null;
 }
 
 async function fetchWithAuth(input: string, init: RequestInit = {}): Promise<Response> {
-  // 1) get whichever access token we can find
-  const adHoc = findAnyAccessToken();
+  const adhoc = findAnyAccessToken();
   const supa = readSupabaseTokens();
-  const accessToken = adHoc || supa?.accessToken || null;
+  const accessToken = adhoc || supa?.accessToken || null;
 
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string>),
@@ -275,24 +242,18 @@ async function fetchWithAuth(input: string, init: RequestInit = {}): Promise<Res
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   };
 
-  // 2) perform the request
   let res = await fetch(input, { ...init, headers });
   if (res.status !== 401) return res;
 
-  // 3) If unauthorized, see if body says INVALID_TOKEN (optional)
   try {
     const clone = res.clone();
     const data = await clone.json().catch(() => null);
     if (data?.detail?.code !== 'INVALID_TOKEN') return res;
-  } catch {
-    // fallthrough
-  }
+  } catch {}
 
-  // 4) Try to refresh once
   const refreshed = await tryRefreshAccessToken();
   if (!refreshed) return res;
 
-  // 5) Retry with new access token
   const retryHeaders = {
     ...(init.headers as Record<string, string>),
     'Content-Type': 'application/json',
@@ -314,6 +275,16 @@ type ReportType = {
   accent: string;
   endpoint?: string;
   enabled: boolean;
+  template?: { embedSrc: string; viewUrl: string; templateId?: string };
+};
+
+/** Canva embed data for Business Overview */
+const CANVA_BUSINESS_OVERVIEW = {
+  embedSrc:
+    'https://www.canva.com/design/DAGs_hzrmK4/fCjSsXKE_u9y2P47Vv3w5Q/view?embed',
+  viewUrl:
+    'https://www.canva.com/design/DAGs_hzrmK4/fCjSsXKE_u9y2P47Vv3w5Q/view?utm_content=DAGs_hzrmK4&utm_campaign=designshare&utm_medium=embeds&utm_source=link',
+  templateId: 'DAGs_hzrmK4',
 };
 
 const REPORT_TYPES: ReportType[] = [
@@ -327,6 +298,7 @@ const REPORT_TYPES: ReportType[] = [
     accent: '#2a2343',
     endpoint: '/api/reports/generate-business-overview',
     enabled: true,
+    template: CANVA_BUSINESS_OVERVIEW,
   },
   {
     id: 'local_impact',
@@ -356,12 +328,17 @@ export default function GeneratePage() {
   const router = useRouter();
   const { push, ToastView } = useToasts();
 
-  const [loadingId, setLoadingId] = React.useState<ReportTypeId | 'custom' | null>(
-    null
-  );
+  const [loadingId, setLoadingId] = React.useState<ReportTypeId | 'custom' | null>(null);
   const [credits, setCredits] = React.useState<number | null>(null);
   const [lastReportId, setLastReportId] = React.useState<string | null>(null);
   const businessId = React.useMemo(getBusinessId, []);
+
+  const [templatePreview, setTemplatePreview] = React.useState<{
+    open: boolean;
+    title?: string;
+    embedSrc?: string;
+    viewUrl?: string;
+  }>({ open: false });
 
   const [builder, setBuilder] = React.useState({
     type: '' as '' | ReportTypeId,
@@ -394,17 +371,25 @@ export default function GeneratePage() {
 
     const def = REPORT_TYPES.find((r) => r.id === typeId)!;
     if (!def.enabled || !def.endpoint) return push(`${def.title} is coming soon.`, 'info');
-    if (notEnoughCredits)
-      return push('Not enough AI credits. Please upgrade or add credits.', 'error');
+    if (notEnoughCredits) return push('Not enough AI credits. Please upgrade or add credits.', 'error');
 
     setLoadingId(typeId);
     try {
+      const body: any = { business_id: businessId };
+      // Pass template metadata (backend can ignore safely if not used)
+      if (def.template) {
+        body.template = {
+          id: def.template.templateId,
+          embed_url: def.template.embedSrc,
+          view_url: def.template.viewUrl,
+        };
+      }
+
       const res = await fetchWithAuth(def.endpoint, {
         method: 'POST',
-        body: JSON.stringify({ business_id: businessId }),
+        body: JSON.stringify(body),
       });
 
-      // If still unauthorized after refresh attempt, clear and redirect
       if (res.status === 401) {
         clearAuthLocally();
         push('Session expired. Please sign in again.', 'error');
@@ -417,8 +402,7 @@ export default function GeneratePage() {
       const data = (await res.json()) as GenerateResponse;
       if (data?.success === false) throw new Error(data?.message || 'Generation failed');
 
-      const newReportId =
-        data?.report_id || (data as any)?.data?.report_id || null;
+      const newReportId = data?.report_id || (data as any)?.data?.report_id || null;
       setLastReportId(newReportId ?? null);
 
       const token = findAnyAccessToken() || readSupabaseTokens()?.accessToken || null;
@@ -458,8 +442,7 @@ export default function GeneratePage() {
   async function handleCustomGenerate(e: React.FormEvent) {
     e.preventDefault();
     if (!businessId) return push('NEXT_PUBLIC_BUSINESS_ID not set.', 'error');
-    if (notEnoughCredits)
-      return push('Not enough AI credits. Please upgrade or add credits.', 'error');
+    if (notEnoughCredits) return push('Not enough AI credits. Please upgrade or add credits.', 'error');
 
     setLoadingId('custom');
     try {
@@ -468,6 +451,8 @@ export default function GeneratePage() {
         body: JSON.stringify({
           business_id: businessId,
           custom: { ...builder },
+          // Also pass the same template meta for consistency
+          template: CANVA_BUSINESS_OVERVIEW,
         }),
       });
 
@@ -482,8 +467,7 @@ export default function GeneratePage() {
       const data = (await res.json()) as GenerateResponse;
       if (data?.success === false) throw new Error(data?.message || 'Generation failed');
 
-      const newReportId =
-        data?.report_id || (data as any)?.data?.report_id || null;
+      const newReportId = data?.report_id || (data as any)?.data?.report_id || null;
       setLastReportId(newReportId ?? null);
 
       const token = findAnyAccessToken() || readSupabaseTokens()?.accessToken || null;
@@ -515,9 +499,7 @@ export default function GeneratePage() {
     <div style={styles.page}>
       <div style={styles.headerBlock}>
         <h1 style={styles.title}>Generate Report</h1>
-        <p style={styles.subtitle}>
-          Create comprehensive reports with AI-powered insights and analysis
-        </p>
+        <p style={styles.subtitle}>Create comprehensive reports with AI-powered insights and analysis</p>
       </div>
 
       {/* Popular Reports */}
@@ -530,6 +512,17 @@ export default function GeneratePage() {
             loading={loadingId === r.id}
             disabled={!!loadingId || !businessId || (credits !== null && credits < COST_PER_REPORT) || !r.enabled}
             onGenerate={() => handleGenerate(r.id)}
+            onPreviewTemplate={
+              r.template
+                ? () =>
+                    setTemplatePreview({
+                      open: true,
+                      title: r.title,
+                      embedSrc: r.template!.embedSrc,
+                      viewUrl: r.template!.viewUrl,
+                    })
+                : undefined
+            }
             credits={credits}
             businessId={businessId}
           />
@@ -714,10 +707,7 @@ export default function GeneratePage() {
               </button>
               <button
                 type="submit"
-                style={{
-                  ...styles.button,
-                  ...(loadingId ? styles.buttonDisabled : styles.primaryBtn),
-                }}
+                style={{ ...styles.button, ...(loadingId ? styles.buttonDisabled : styles.primaryBtn) }}
                 disabled={!!loadingId || !businessId || (credits !== null && credits < COST_PER_REPORT)}
               >
                 {loadingId === 'custom' ? 'Generating…' : 'Generate Report'}
@@ -730,12 +720,8 @@ export default function GeneratePage() {
             {credits === null ? '—' : credits}
             {lastReportId ? (
               <>
-                {' '}
-                • Last Report:{' '}
-                <a
-                  href={`/my-reports?new=${encodeURIComponent(lastReportId)}`}
-                  style={styles.link}
-                >
+                {' '}• Last Report:{' '}
+                <a href={`/my-reports?new=${encodeURIComponent(lastReportId)}`} style={styles.link}>
                   {lastReportId}
                 </a>
               </>
@@ -743,6 +729,49 @@ export default function GeneratePage() {
           </div>
         </form>
       </div>
+
+      {/* Template Preview Modal */}
+      {templatePreview.open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setTemplatePreview({ open: false })}
+          style={styles.modalOverlay}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={styles.modalContent}
+          >
+            <div style={styles.modalHeader}>
+              <div style={{ fontWeight: 800 }}>{templatePreview.title} — Template Preview</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {templatePreview.viewUrl ? (
+                  <a href={templatePreview.viewUrl} target="_blank" rel="noreferrer" style={styles.link}>
+                    Open in Canva ↗
+                  </a>
+                ) : null}
+                <button
+                  onClick={() => setTemplatePreview({ open: false })}
+                  style={{ ...styles.button, ...styles.secondaryBtn, padding: '6px 10px' }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {/* Canva embed with the same ratio block you provided */}
+            <div style={styles.embedWrap}>
+              <iframe
+                loading="lazy"
+                title="Business Overview Template"
+                style={styles.embedIframe}
+                src={templatePreview.embedSrc}
+                allow="fullscreen"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {ToastView}
     </div>
@@ -796,11 +825,13 @@ function Badge({
     </span>
   );
 }
+
 function ReportCard({
   def,
   loading,
   disabled,
   onGenerate,
+  onPreviewTemplate,
   credits,
   businessId,
 }: {
@@ -808,6 +839,7 @@ function ReportCard({
   loading: boolean;
   disabled: boolean;
   onGenerate: () => void;
+  onPreviewTemplate?: () => void;
   credits: number | null;
   businessId: string | null;
 }) {
@@ -832,31 +864,44 @@ function ReportCard({
             ))}
           </div>
         </div>
-        <button
-          onClick={onGenerate}
-          disabled={disabled}
-          style={{
-            ...styles.button,
-            ...(disabled ? styles.buttonDisabled : styles.hollowBrandBtn),
-            marginTop: 8,
-            width: '100%',
-          }}
-          title={
-            !def.enabled
-              ? 'Coming soon'
-              : !businessId
-              ? 'Business ID not set'
-              : credits !== null && credits < COST_PER_REPORT
-              ? 'Not enough credits'
-              : ''
-          }
-        >
-          {loading ? 'Generating…' : 'Generate Report →'}
-        </button>
+
+        <div style={{ display: 'grid', gap: 8, marginTop: 4 }}>
+          <button
+            onClick={onGenerate}
+            disabled={disabled}
+            style={{
+              ...styles.button,
+              ...(disabled ? styles.buttonDisabled : styles.hollowBrandBtn),
+              width: '100%',
+            }}
+            title={
+              !def.enabled
+                ? 'Coming soon'
+                : !businessId
+                ? 'Business ID not set'
+                : credits !== null && credits < COST_PER_REPORT
+                ? 'Not enough credits'
+                : ''
+            }
+          >
+            {loading ? 'Generating…' : 'Generate Report →'}
+          </button>
+
+          {onPreviewTemplate ? (
+            <button
+              type="button"
+              onClick={onPreviewTemplate}
+              style={{ ...styles.button, ...styles.secondaryBtn, width: '100%' }}
+            >
+              Preview Template
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
 }
+
 function SelectField(props: {
   label: string;
   placeholder: string;
@@ -1258,5 +1303,48 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.sub,
     padding: 0,
     marginLeft: 'auto',
+  },
+
+  /* Modal */
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.55)',
+    display: 'grid',
+    placeItems: 'center',
+    zIndex: 1100,
+    padding: 16,
+  },
+  modalContent: {
+    width: 'min(980px, 100%)',
+    background: colors.card,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 14,
+    boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+    padding: 16,
+    color: colors.text,
+  },
+  modalHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  embedWrap: {
+    position: 'relative',
+    width: '100%',
+    height: 0,
+    paddingTop: '129.4118%', // same ratio as provided
+    boxShadow: '0 2px 8px 0 rgba(63,69,81,0.16)',
+    overflow: 'hidden',
+    borderRadius: 8,
+  },
+  embedIframe: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    top: 0,
+    left: 0,
+    border: 'none',
   },
 };
