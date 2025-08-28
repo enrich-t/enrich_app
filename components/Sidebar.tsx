@@ -20,9 +20,6 @@ type Profile = {
   brand_primary_color?: string;
   brand_secondary_color?: string;
   logo_url?: string;
-  credits_remaining?: number | string;
-  ai_credits?: number | string;
-  credits?: number | string;
 };
 
 type Item = { href: string; icon: string; label: string };
@@ -35,11 +32,15 @@ const NAV: Item[] = [
   { href: '/settings',   icon: '⚙️', label: 'Settings' },
 ];
 
-function asNumber(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+function readCreditsFromStorage(): number | null {
+  try {
+    const v = localStorage.getItem('ai_credits');
+    if (!v) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
 }
 
 export default function Sidebar() {
@@ -47,40 +48,39 @@ export default function Sidebar() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
 
+  // Load basic profile (for logo/name/industry)
   useEffect(() => {
     const load = async () => {
       const t = getToken();
       if (!t) return;
-
       try {
         const r = await apiFetch('/api/auth/me', { method: 'GET', cache: 'no-store' });
         const txt = await r.text();
         let j: any = null;
         try { j = JSON.parse(txt); } catch {}
-        // debug so we see shape once in the browser (can remove later)
-        console.log('[sidebar]/api/auth/me →', j);
-
-        if (r.ok) {
-          const p: Profile = j?.profile || {};
-          setProfile(p);
-
-          // Extract any field that looks like credits
-          const c =
-            asNumber(p.credits_remaining) ??
-            asNumber(p.ai_credits) ??
-            asNumber(p.credits) ??
-            asNumber(j?.credits_remaining) ??
-            asNumber(j?.ai_credits) ??
-            asNumber(j?.credits);
-
-          if (c !== null) setCredits(c);
-        }
-      } catch {
-        /* ignore */
-      }
+        if (r.ok) setProfile(j?.profile || {});
+      } catch {}
     };
-
     load();
+  }, []);
+
+  // Load credits from localStorage + listen for changes
+  useEffect(() => {
+    // initial read
+    setCredits(readCreditsFromStorage());
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'ai_credits') setCredits(readCreditsFromStorage());
+    };
+    const onCustom = () => setCredits(readCreditsFromStorage());
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('ai:credits', onCustom as EventListener);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('ai:credits', onCustom as EventListener);
+    };
   }, []);
 
   const activeLinkStyle = (active: boolean): React.CSSProperties => ({
@@ -101,7 +101,7 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Header with business info (clickable to /profile) */}
+      {/* Header with business info (click to /profile) */}
       <Link href="/profile" style={{ textDecoration: 'none', color: 'inherit' }}>
         <div
           style={{
@@ -117,24 +117,15 @@ export default function Sidebar() {
         >
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
+              width: 44, height: 44, borderRadius: 12,
               background: profile?.brand_primary_color || colors.brand,
-              display: 'grid',
-              placeItems: 'center',
-              color: '#fff',
-              fontWeight: 900,
-              fontSize: 18,
-              overflow: 'hidden',
+              display: 'grid', placeItems: 'center',
+              color: '#fff', fontWeight: 900, fontSize: 18, overflow: 'hidden',
             }}
           >
             {profile?.logo_url ? (
-              <img
-                src={profile.logo_url}
-                alt="logo"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12 }}
-              />
+              <img src={profile.logo_url} alt="logo"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12 }} />
             ) : (
               (profile?.business_name?.[0] || '🏢')
             )}
@@ -147,7 +138,6 @@ export default function Sidebar() {
             <div style={{ color: colors.sub, fontSize: 12 }}>
               {profile?.industry || 'Industry'}
             </div>
-
             <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: colors.text }}>
               AI Credits: {credits != null ? credits : '—'}
             </div>
