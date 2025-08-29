@@ -169,12 +169,6 @@ export default function AiTokensPage() {
         const planName = String(data.plan_name ?? 'Grow');
         const norm = (['Free', 'Grow', 'Thrive'] as const).includes(planName as any) ? (planName as any) : 'Grow';
         setBalance({ plan: norm, total, remaining });
-
-        // NEW: publish credits to localStorage so Sidebar can show AI Credits live
-        try {
-          localStorage.setItem('ai_credits', String(remaining));
-          window.dispatchEvent(new CustomEvent('ai:credits'));
-        } catch {}
       } catch {}
     },
     []
@@ -193,9 +187,7 @@ export default function AiTokensPage() {
       });
       const ok = r.ok;
       setToast({ kind: ok ? 'ok' : 'err', msg: ok ? `Added ${qty} credits.` : `Top-up failed (${r.status})` });
-      if (ok) {
-        await load(); // load() will republish to localStorage
-      }
+      if (ok) await load();
     } catch (e: any) {
       setToast({ kind: 'err', msg: e?.message || 'Network error' });
     } finally {
@@ -212,9 +204,7 @@ export default function AiTokensPage() {
       });
       const ok = r.ok;
       setToast({ kind: ok ? 'ok' : 'err', msg: ok ? `Plan updated to ${planId}.` : `Plan change failed (${r.status})` });
-      if (ok) {
-        await load(); // load() will republish to localStorage
-      }
+      if (ok) await load();
     } catch (e: any) {
       setToast({ kind: 'err', msg: e?.message || 'Network error' });
     } finally {
