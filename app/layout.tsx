@@ -1,23 +1,21 @@
 import './globals.css';
-import type { Metadata } from 'next';
-import Shell from '../components/Shell';
+import React from 'react';
+import { ToastProvider } from '../components/Toast';
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'Enrich',
   description: 'Responsible operations dashboard',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0 }}>
-        {/* Shell renders the global sidebar on all pages except /login */}
-        <Shell>{children}</Shell>
+      <body>
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );
 }
+
+
+
