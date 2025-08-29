@@ -1,4 +1,4 @@
-﻿import { apiFetch } from '@/lib/api';
+﻿import { apiFetch } from '../../lib/api';
 import type { ReportRow } from './types';
 
 export async function generateBusinessOverview(businessId: string): Promise<void> {
@@ -31,3 +31,4 @@ export function toCsvFallback(obj: any): string {
   walk('', obj);
   return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
 }
+

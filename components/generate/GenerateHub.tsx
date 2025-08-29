@@ -1,9 +1,9 @@
 ﻿'use client';
 
 import React, { useEffect, useState } from 'react';
-import { fetchMe, extractBusinessId } from '@/lib/api';
-import { generateBusinessOverview, listReports, toCsvFallback } from '@/features/reports/businessOverview';
-import type { ReportRow } from '@/features/reports/types';
+import { fetchMe, extractBusinessId } from '../../lib/api';
+import { generateBusinessOverview, listReports, toCsvFallback } from '../../features/reports/businessOverview';
+import type { ReportRow } from '../../features/reports/types';
 
 const brand = {
   primary: '#9881b8',
@@ -296,3 +296,4 @@ export function GenerateHub() {
     </div>
   );
 }
+
