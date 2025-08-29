@@ -1,109 +1,21 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { apiFetch } from '../../components/api';
-import { getBusinessId, getToken } from '../../components/auth';
+import React, { useState } from 'react';
+import Link from 'next/link';
 
 const brand = {
-  primary: '#9881b8',   // figma: primary
-  secondary: '#e5c564', // figma: secondary
-  third: '#aec483',     // figma: third
-  bg: '#0f1115',
+  primary: '#9881b8',
+  secondary: '#e5c564',
+  third: '#aec483',
   text: '#e9eaf0',
   sub: '#a7adbb',
   card: '#141821',
   border: '#252a34',
+  bg: '#0f1115',
+  light: '#ffffff',
 };
 
-type PopularCard = {
-  id: 'business_overview' | 'local_impact' | 'energy_resources';
-  title: string;
-  desc: string;
-  metrics: string[];
-  age: string;
-  icon: string;
-  tone: 'primary' | 'third' | 'secondary';
-};
-
-const POPULAR: PopularCard[] = [
-  {
-    id: 'business_overview',
-    title: 'Business Overview',
-    desc: 'Comprehensive analysis of your business performance and key metrics',
-    metrics: ['Revenue Growth', 'Market Share', 'Operational Efficiency'],
-    age: '2 days ago',
-    icon: '📊',
-    tone: 'primary',
-  },
-  {
-    id: 'local_impact',
-    title: 'Local Impact',
-    desc: 'Community engagement and local market influence assessment',
-    metrics: ['Community Reach', 'Local Partnerships', 'Regional Growth'],
-    age: '1 week ago',
-    icon: '🌍',
-    tone: 'third',
-  },
-  {
-    id: 'energy_resources',
-    title: 'Energy & Resources',
-    desc: 'Sustainability metrics and resource utilization analysis',
-    metrics: ['Energy Efficiency', 'Carbon Footprint', 'Resource Usage'],
-    age: '3 days ago',
-    icon: '⚡',
-    tone: 'secondary',
-  },
-];
-
-const colorsForTone: Record<PopularCard['tone'], { bg: string; fg: string }> = {
-  primary:  { bg: '#372c4a', fg: brand.primary },
-  secondary:{ bg: '#3a320e', fg: brand.secondary },
-  third:    { bg: '#2f3b29', fg: brand.third },
-};
-
-const inputCss: React.CSSProperties = {
-  padding: '12px 12px',
-  borderRadius: 12,
-  border: `1px solid ${brand.border}`,
-  background: '#0f131a',
-  color: brand.text,
-  outline: 'none',
-  fontSize: 14,
-  width: '100%',
-};
-
-const btn = {
-  primary: {
-    padding: '12px 16px',
-    borderRadius: 12,
-    border: `1px solid ${brand.primary}`,
-    background: brand.primary,
-    color: '#fff',
-    fontWeight: 800,
-    cursor: 'pointer',
-  } as React.CSSProperties,
-  ghost: {
-    padding: '10px 14px',
-    borderRadius: 12,
-    border: `1px solid ${brand.border}`,
-    background: 'transparent',
-    color: brand.text,
-    fontWeight: 700,
-    cursor: 'pointer',
-  } as React.CSSProperties,
-  outline: {
-    padding: '12px 16px',
-    borderRadius: 12,
-    border: `1px solid ${brand.primary}`,
-    background: 'transparent',
-    color: brand.primary,
-    fontWeight: 800,
-    cursor: 'pointer',
-  } as React.CSSProperties,
-};
-
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card(props: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div
       style={{
@@ -111,407 +23,389 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
         border: `1px solid ${brand.border}`,
         borderRadius: 16,
         padding: 18,
-        ...style,
+        ...props.style,
       }}
     >
-      {children}
+      {props.children}
     </div>
   );
 }
 
-function SectionTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+function SectionTitle(props: { icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-      <span style={{ fontSize: 18 }}>{icon}</span>
-      <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{children}</h3>
+      <div style={{ fontSize: 18 }}>{props.icon ?? '📄'}</div>
+      <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: brand.text }}>{props.children}</h2>
     </div>
   );
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
+function Pill(props: { children: React.ReactNode; tone?: 'primary' | 'secondary' | 'third' }) {
+  const tone =
+    props.tone === 'secondary' ? brand.secondary : props.tone === 'third' ? brand.third : brand.primary;
   return (
     <span
       style={{
-        display: 'inline-block',
-        padding: '6px 10px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 10px',
         borderRadius: 999,
-        border: `1px solid ${brand.border}`,
-        background: '#0f131a',
-        color: brand.text,
+        border: `1px solid ${tone}`,
+        color: tone,
+        background: 'transparent',
+        fontWeight: 800,
         fontSize: 12,
-        fontWeight: 700,
       }}
     >
-      {children}
+      {props.children}
     </span>
   );
 }
 
-export default function GeneratePage() {
-  const router = useRouter();
-
-  // form state
-  const [reportType, setReportType] = useState<string>('business_overview');
-  const [period, setPeriod] = useState<string>('last_quarter');
-  const [format, setFormat] = useState<string>('pdf');
-  const [topics, setTopics] = useState<string[]>([]);
-  const [includeVisuals, setIncludeVisuals] = useState<boolean>(true);
-  const [includeAI, setIncludeAI] = useState<boolean>(true);
-  const [notes, setNotes] = useState<string>('');
-  const [title, setTitle] = useState<string>('');
-  const [busy, setBusy] = useState<boolean>(false);
-  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
-
-  const toggleTopic = (t: string) =>
-    setTopics((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
-
-  const quickTemplates = useMemo(
-    () =>
-      POPULAR.map((p) => ({
-        id: p.id,
-        label: p.title,
-        apply: () => {
-          setReportType(p.id);
-          setTopics(p.metrics);
-          setTitle(p.title);
-        },
-      })),
-    []
+function Button(props: { children: React.ReactNode; onClick?: () => void; variant?: 'solid' | 'outline'; color?: string }) {
+  const color = props.color ?? brand.primary;
+  const solid = props.variant !== 'outline';
+  return (
+    <button
+      onClick={props.onClick}
+      style={{
+        padding: '10px 16px',
+        borderRadius: 12,
+        border: `1px solid ${color}`,
+        background: solid ? color : 'transparent',
+        color: solid ? '#fff' : color,
+        fontWeight: 900,
+        cursor: 'pointer',
+      }}
+    >
+      {props.children}
+    </button>
   );
+}
 
-  async function generate(payloadExtras?: Record<string, any>) {
-    const token = getToken();
-    if (!token) {
-      router.replace('/login');
-      return;
-    }
-
-    const business_id = getBusinessId() || process.env.NEXT_PUBLIC_BUSINESS_ID || '';
-    const payload = {
-      business_id: String(business_id),
-      report_type: reportType || 'business_overview',
-      output_format: format,
-      time_period: period,
-      include_visuals: includeVisuals,
-      include_ai_insights: includeAI,
-      topics,
-      title: title?.trim() || undefined,
-      ...payloadExtras,
-    };
-
-    setBusy(true);
-    setToast(null);
-    try {
-      const res = await apiFetch('/api/reports/generate-business-overview', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      const txt = await res.text();
-      let json: any = null;
-      try { json = JSON.parse(txt); } catch {}
-
-      if (!res.ok) {
-        const msg = json?.message || json?.detail || txt || `${res.status} ${res.statusText}`;
-        setToast({ kind: 'err', msg: `Generate failed: ${String(msg).slice(0, 220)}` });
-        setBusy(false);
-        return;
-      }
-
-      setToast({ kind: 'ok', msg: 'Report generation started. It will appear in My Reports shortly.' });
-      setBusy(false);
-      // optional: route to My Reports
-      setTimeout(() => router.push('/my-reports'), 800);
-    } catch (e: any) {
-      setToast({ kind: 'err', msg: e?.message || 'Network error' });
-      setBusy(false);
-    }
-  }
+export default function GeneratePage() {
+  const [toast, setToast] = useState<string | null>(null);
+  const showSoon = (msg = 'Coming soon — logic will be wired on the generate branch.') => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  };
 
   return (
     <div style={{ color: brand.text }}>
-      <div style={{ marginBottom: 10 }}>
-        <h1 style={{ margin: 0, fontSize: 32, fontWeight: 900 }}>Generate Report</h1>
+      {/* Header / Intro */}
+      <div style={{ marginBottom: 14 }}>
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900 }}>Generate Report</h1>
         <div style={{ color: brand.sub, marginTop: 6 }}>
           Create comprehensive reports with AI-powered insights and analysis
         </div>
       </div>
 
       {/* Popular Reports */}
-      <Card style={{ marginTop: 18 }}>
-        <SectionTitle icon="🗂️">Popular Reports</SectionTitle>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: 16,
-          }}
-        >
-          {POPULAR.map((p) => {
-            const tone = colorsForTone[p.tone];
-            return (
-              <div
-                key={p.id}
-                style={{
-                  border: `1px solid ${brand.border}`,
-                  borderRadius: 16,
-                  padding: 16,
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <div
-                    style={{
-                      width: 48,
-                      height: 48,
-                      display: 'grid',
-                      placeItems: 'center',
-                      borderRadius: 12,
-                      background: tone.bg,
-                      color: tone.fg,
-                      fontSize: 24,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {p.icon}
-                  </div>
-                  <span
-                    style={{
-                      alignSelf: 'start',
-                      background: '#0f131a',
-                      border: `1px solid ${brand.border}`,
-                      color: brand.sub,
-                      padding: '4px 10px',
-                      borderRadius: 999,
-                      fontSize: 12,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {p.age}
-                  </span>
-                </div>
-
-                <div style={{ fontSize: 18, fontWeight: 800, marginTop: 12 }}>{p.title}</div>
-                <div style={{ color: brand.sub, marginTop: 6 }}>{p.desc}</div>
-
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ fontWeight: 800, marginBottom: 10 }}>Key Metrics:</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {p.metrics.map((m) => (
-                      <Chip key={m}>{m}</Chip>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 16 }}>
-                  <button
-                    style={{ ...btn.outline, width: '100%', borderColor: tone.fg, color: tone.fg }}
-                    onClick={() => {
-                      setReportType(p.id);
-                      setTopics(p.metrics);
-                      setTitle(p.title);
-                      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                    }}
-                  >
-                    Generate Report →
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-
-      {/* Trending Topics */}
-      <Card style={{ marginTop: 18 }}>
-        <SectionTitle icon="📈">Trending Topics</SectionTitle>
-        <div style={{ display: 'grid', gap: 16 }}>
-          {[
-            { name: 'AI Integration', delta: '+24%', badge: 'Hot', c: brand.primary },
-            { name: 'Supply Chain Resilience', delta: '+18%', badge: 'Rising', c: brand.secondary },
-            { name: 'Sustainability Reporting', delta: '+15%', badge: 'Trending', c: brand.third },
-            { name: 'Digital Transformation', delta: '+12%', badge: 'Popular', c: brand.primary },
-            { name: 'ESG Compliance', delta: '+9%', badge: 'Growing', c: brand.third },
-          ].map((t) => (
+      <SectionTitle icon={<span>📈</span>}>Popular Reports</SectionTitle>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 16,
+          marginBottom: 18,
+        }}
+      >
+        <Card>
+          <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
             <div
-              key={t.name}
               style={{
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                background: '#2b2437',
                 display: 'grid',
-                gridTemplateColumns: '1fr auto',
-                alignItems: 'center',
-                borderBottom: `1px solid ${brand.border}`,
-                paddingBottom: 10,
+                placeItems: 'center',
+                color: brand.primary,
+                fontSize: 22,
+                fontWeight: 900,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    background: t.c,
-                    display: 'inline-block',
-                  }}
-                />
-                <div style={{ fontWeight: 800 }}>{t.name}</div>
-                <span
-                  style={{
-                    marginLeft: 8,
-                    background: '#0f131a',
-                    border: `1px solid ${brand.border}`,
-                    color: brand.sub,
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  {t.badge}
-                </span>
-              </div>
-              <div style={{ color: brand.primary, fontWeight: 900 }}>{t.delta}</div>
+              📊
             </div>
-          ))}
-        </div>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>Business Overview</div>
+              <div style={{ color: brand.sub, marginTop: 6 }}>
+                Comprehensive analysis of performance and key metrics
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <Pill>Revenue Growth</Pill>
+                <Pill>Market Share</Pill>
+                <Pill>Operational Efficiency</Pill>
+              </div>
+            </div>
+            <div>
+              <Button onClick={() => showSoon('This Generate action will be wired later.')}>Generate Report →</Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                background: '#273026',
+                display: 'grid',
+                placeItems: 'center',
+                color: brand.third,
+                fontSize: 22,
+                fontWeight: 900,
+              }}
+            >
+              🌍
+            </div>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>Local Impact</div>
+              <div style={{ color: brand.sub, marginTop: 6 }}>
+                Community engagement and local market influence assessment
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <Pill tone="third">Community Reach</Pill>
+                <Pill tone="third">Local Partnerships</Pill>
+                <Pill tone="third">Regional Growth</Pill>
+              </div>
+            </div>
+            <div>
+              <Button color={brand.third} onClick={() => showSoon()}>Generate Report →</Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 14,
+                background: '#322b1c',
+                display: 'grid',
+                placeItems: 'center',
+                color: brand.secondary,
+                fontSize: 22,
+                fontWeight: 900,
+              }}
+            >
+              ⚡
+            </div>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>Energy &amp; Resources</div>
+              <div style={{ color: brand.sub, marginTop: 6 }}>
+                Sustainability metrics and resource utilization analysis
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <Pill tone="secondary">Energy Efficiency</Pill>
+                <Pill tone="secondary">Carbon Footprint</Pill>
+                <Pill tone="secondary">Resource Usage</Pill>
+              </div>
+            </div>
+            <div>
+              <Button color={brand.secondary} onClick={() => showSoon()}>Generate Report →</Button>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Trending Topics */}
+      <SectionTitle icon={<span>📈</span>}>Trending Topics</SectionTitle>
+      <Card>
+        {[
+          { label: 'AI Integration', tag: 'Hot', change: '+24%' },
+          { label: 'Supply Chain Resilience', tag: 'Rising', change: '+18%' },
+          { label: 'Sustainability Reporting', tag: 'Trending', change: '+15%' },
+          { label: 'Digital Transformation', tag: 'Popular', change: '+12%' },
+          { label: 'ESG Compliance', tag: 'Growing', change: '+9%' },
+        ].map((t, i) => (
+          <div
+            key={t.label}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr auto auto',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 6px',
+              borderTop: i === 0 ? 'none' : `1px solid ${brand.border}`,
+            }}
+          >
+            <div style={{ width: 10, height: 10, borderRadius: 999, background: brand.primary }} />
+            <div style={{ fontWeight: 800 }}>{t.label}</div>
+            <span
+              style={{
+                justifySelf: 'start',
+                background: '#2b2437',
+                color: brand.primary,
+                border: `1px solid ${brand.primary}`,
+                borderRadius: 999,
+                padding: '4px 10px',
+                fontSize: 12,
+                fontWeight: 900,
+              }}
+            >
+              {t.tag}
+            </span>
+            <div style={{ color: brand.secondary, fontWeight: 900 }}>{t.change}</div>
+          </div>
+        ))}
       </Card>
 
       {/* Industry Updates */}
-      <Card style={{ marginTop: 18 }}>
-        <SectionTitle icon="🌐">Industry Updates</SectionTitle>
-        <div style={{ display: 'grid', gap: 14 }}>
-          {[
-            { title: 'New ESG Disclosure Requirements', tag: 'Regulatory', ago: '2 hours ago' },
-            { title: 'AI Ethics Guidelines Released', tag: 'Technology', ago: '1 day ago' },
-            { title: 'Global Supply Chain Index Update', tag: 'Market Data', ago: '3 days ago' },
-          ].map((u, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
-              <div>
-                <div style={{ fontWeight: 800 }}>{u.title}</div>
-                <div style={{ color: brand.sub, marginTop: 4 }}>Updated regulations and standards</div>
-                <div style={{ color: brand.sub, marginTop: 6, fontSize: 12 }}>🕒 {u.ago}</div>
-              </div>
-              <div style={{ alignSelf: 'start' }}>
-                <span
-                  style={{
-                    background: '#0f131a',
-                    border: `1px solid ${brand.border}`,
-                    color: brand.sub,
-                    padding: '4px 10px',
-                    borderRadius: 999,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  {u.tag}
-                </span>
-              </div>
+      <SectionTitle icon={<span>🌿</span>}>Industry Updates</SectionTitle>
+      <Card>
+        {[
+          { title: 'New ESG Disclosure Requirements', cat: 'Regulatory', time: '2 hours ago' },
+          { title: 'AI Ethics Guidelines Released', cat: 'Technology', time: '1 day ago' },
+          { title: 'Global Supply Chain Index Update', cat: 'Market Data', time: '3 days ago' },
+        ].map((u, i) => (
+          <div key={u.title} style={{ padding: '14px 6px', borderTop: i === 0 ? 'none' : `1px solid ${brand.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 4, height: 32, background: brand.third, borderRadius: 4 }} />
+              <div style={{ fontWeight: 900 }}>{u.title}</div>
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  background: '#2a281e',
+                  border: `1px solid ${brand.secondary}`,
+                  color: '#f3e2a4',
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                {u.cat}
+              </span>
             </div>
-          ))}
-        </div>
+            <div style={{ color: brand.sub, marginLeft: 14, marginTop: 6 }}>🕒 {u.time}</div>
+          </div>
+        ))}
       </Card>
 
-      {/* Report Builder */}
-      <Card style={{ marginTop: 18 }}>
-        <SectionTitle icon="⚙️">Report Builder</SectionTitle>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Report Type</div>
-            <select
-              value={reportType}
-              onChange={(e) => setReportType(e.target.value)}
-              style={inputCss}
-            >
-              <option value="business_overview">Business Overview</option>
-              <option value="local_impact">Local Impact</option>
-              <option value="energy_resources">Energy & Resources</option>
-            </select>
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Time Period</div>
-            <select value={period} onChange={(e) => setPeriod(e.target.value)} style={inputCss}>
-              <option value="last_month">Last Month</option>
-              <option value="last_quarter">Last Quarter</option>
-              <option value="ytd">Year to Date</option>
-            </select>
-          </div>
-
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Focus Topics</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {['Revenue Growth', 'Market Share', 'Operational Efficiency', 'Community Reach', 'Carbon Footprint'].map(
-                (t) => (
-                  <button
-                    key={t}
-                    onClick={() => toggleTopic(t)}
-                    style={{
-                      ...inputCss,
-                      padding: '8px 12px',
-                      width: 'auto',
-                      borderColor: topics.includes(t) ? brand.primary : brand.border,
-                      background: topics.includes(t) ? '#2b2437' : '#0f131a',
-                    }}
-                  >
-                    {t}
-                  </button>
-                )
-              )}
+      {/* Suggested Updates */}
+      <SectionTitle icon={<span>📅</span>}>Suggested Updates</SectionTitle>
+      <Card>
+        {[
+          { title: 'Q3 Financial Performance Report', sub: 'Quarterly deadline approaching', days: '45 days ago', dot: '#e04a59' },
+          { title: 'Customer Satisfaction Analysis', sub: 'New survey data available', days: '32 days ago', dot: '#d2b24a' },
+          { title: 'Market Competitive Analysis', sub: 'Industry shifts detected', days: '28 days ago', dot: '#8cb874' },
+        ].map((s, i) => (
+          <div
+            key={s.title}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr auto',
+              gap: 12,
+              alignItems: 'center',
+              padding: 14,
+              borderRadius: 12,
+              border: i === 0 ? 'none' : `1px solid ${brand.border}`,
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 999, background: s.dot }} />
+                <div style={{ fontWeight: 900 }}>{s.title}</div>
+              </div>
+              <div style={{ color: brand.sub, marginLeft: 20, marginTop: 6 }}>{s.sub}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ color: brand.sub }}>{s.days}</div>
+              <Button variant="outline" onClick={() => showSoon('Update flow will be wired later.')}>
+                Update
+              </Button>
             </div>
           </div>
+        ))}
+      </Card>
 
+      {/* Builder (visual-only shell) */}
+      <SectionTitle icon={<span>⚙️</span>}>Report Builder</SectionTitle>
+      <Card>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Output Format</div>
-            <select value={format} onChange={(e) => setFormat(e.target.value)} style={inputCss}>
-              <option value="pdf">PDF</option>
-              <option value="json">JSON</option>
-              <option value="csv">CSV</option>
-            </select>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Report Type</div>
+            <div style={{ border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, color: brand.sub }}>
+              Select report type
+            </div>
+          </div>
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Time Period</div>
+            <div style={{ border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, color: brand.sub }}>
+              Select period
+            </div>
+          </div>
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Focus Topics</div>
+            <div style={{ border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, color: brand.sub }}>
+              Select topics
+            </div>
+          </div>
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Output Format</div>
+            <div style={{ border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, color: brand.sub }}>
+              Select format
+            </div>
           </div>
         </div>
 
-        <hr style={{ border: 0, borderTop: `1px solid ${brand.border}`, margin: '18px 0' }} />
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12 }}>
-            <input type="checkbox" checked={includeVisuals} onChange={(e) => setIncludeVisuals(e.target.checked)} />
-            Include charts, graphs, and visual analytics
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12 }}>
-            <input type="checkbox" checked={includeAI} onChange={(e) => setIncludeAI(e.target.checked)} />
-            Add contextual questions and AI insights
-          </label>
+        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Visual Elements</div>
+            <div
+              style={{
+                border: `1px solid ${brand.border}`,
+                borderRadius: 12,
+                padding: 12,
+                color: brand.sub,
+              }}
+            >
+              Include charts, graphs, and visual analytics
+            </div>
+          </div>
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Context &amp; Insights</div>
+            <div
+              style={{
+                border: `1px solid ${brand.border}`,
+                borderRadius: 12,
+                padding: 12,
+                color: brand.sub,
+              }}
+            >
+              Add contextual questions and AI insights
+            </div>
+          </div>
         </div>
 
-        <div style={{ marginTop: 14 }}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Custom Requirements</div>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Describe any specific requirements, focus areas, or questions…"
-            rows={5}
-            style={{ ...inputCss, resize: 'vertical' }}
-          />
-        </div>
-
-        <div style={{ marginTop: 14 }}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Report Title</div>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Enter a custom title for your report"
-            style={inputCss}
-          />
-          <div style={{ color: brand.sub, marginTop: 8, fontSize: 13 }}>
-            Estimated generation time: 2–5 minutes
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Custom Requirements</div>
+          <div
+            style={{
+              border: `1px solid ${brand.border}`,
+              borderRadius: 12,
+              padding: 12,
+              color: brand.sub,
+              minHeight: 90,
+            }}
+          >
+            Describe any specific requirements, focus areas, or questions you'd like the report to address…
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-          <button style={btn.ghost} onClick={() => alert('Templates coming soon')}>
+          <Button variant="outline" onClick={() => showSoon('Template saving will be added later.')}>
             Save as Template
-          </button>
-          <button style={{ ...btn.primary, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={() => generate({ notes })}>
-            {busy ? 'Generating…' : 'Generate Report'}
-          </button>
+          </Button>
+          <Button onClick={() => showSoon('Generate logic will be implemented on the logic branch.')}>
+            Generate Report
+          </Button>
         </div>
       </Card>
 
@@ -523,16 +417,17 @@ export default function GeneratePage() {
             position: 'fixed',
             right: 16,
             bottom: 16,
-            background: toast.kind === 'ok' ? '#18321b' : '#3a1c1c',
-            border: `1px solid ${toast.kind === 'ok' ? '#2e6b36' : '#764343'}`,
-            color: '#fff',
+            background: '#2b2437',
+            border: `1px solid ${brand.border}`,
+            color: brand.light,
             padding: '10px 12px',
             borderRadius: 10,
             maxWidth: 520,
             boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+            zIndex: 1000,
           }}
         >
-          {toast.msg}
+          {toast}
         </div>
       )}
     </div>
