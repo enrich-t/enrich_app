@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../components/Toast';
-import { apiFetch, getToken } from '../../components/api'; // <-- use your existing API helper
+import { apiFetch } from '../../components/api'; // <-- only apiFetch now
 import { COST_PER_REPORT } from './reports-registry';
 
 type GenerateOk = {
@@ -32,8 +32,7 @@ export function useGenerateReport() {
       const res = await safeApi('/api/ai-credits', { method: 'GET' });
       if (res?.ok) {
         const j = await res.json();
-        const r =
-          j?.remaining ?? j?.ai_credits?.remaining ?? j?.credits?.remaining;
+        const r = j?.remaining ?? j?.ai_credits?.remaining ?? j?.credits?.remaining;
         if (typeof r === 'number') {
           setCredits(r);
           persistCredits(r);
@@ -57,14 +56,13 @@ export function useGenerateReport() {
 
     setLoadingId('business_overview');
     try {
-      const body = JSON.stringify({ business_id: businessId, ...(extra || {}) });
       const res = await safeApi('/api/reports/generate-business-overview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body,
+        body: JSON.stringify({ business_id: businessId, ...(extra || {}) }),
       });
 
-      if (!res) throw new Error('Network error. Are rewrites set for /api → backend?');
+      if (!res) throw new Error('Network error. Are /api rewrites pointing to FastAPI?');
       if (res.status === 401) {
         push({ title: 'Session expired', description: 'Please sign in again.', tone: 'error' });
         setTimeout(() => router.push('/login'), 400);
@@ -83,8 +81,7 @@ export function useGenerateReport() {
       const cRes = await safeApi('/api/ai-credits', { method: 'GET' });
       if (cRes?.ok) {
         const cj = await cRes.json();
-        const r =
-          cj?.remaining ?? cj?.ai_credits?.remaining ?? cj?.credits?.remaining;
+        const r = cj?.remaining ?? cj?.ai_credits?.remaining ?? cj?.credits?.remaining;
         if (typeof r === 'number') {
           setCredits(r);
           persistCredits(r);
@@ -125,17 +122,11 @@ function persistCredits(n: number) {
   } catch {}
 }
 
-/** Uses your apiFetch; gracefully handles absence of token. */
+/** Uses your apiFetch; if it throws, falls back to window.fetch. */
 async function safeApi(path: string, init?: RequestInit) {
   try {
-    const token = getToken?.();
-    const headers = {
-      ...(init?.headers as Record<string, string>),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-    return await apiFetch(path, { ...init, headers });
+    return await apiFetch(path, init);
   } catch {
-    // Fallback to plain fetch if apiFetch throws (shouldn’t normally)
     try {
       return await fetch(path, init);
     } catch {
