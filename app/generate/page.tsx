@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 
 const brand = {
   primary: '#9881b8',
@@ -31,9 +30,9 @@ function Card(props: { children: React.ReactNode; style?: React.CSSProperties })
   );
 }
 
-function SectionTitle(props: { icon?: React.ReactNode; children: React.ReactNode }) {
+function SectionTitle(props: { icon?: React.ReactNode; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0', ...props.style }}>
       <div style={{ fontSize: 18 }}>{props.icon ?? '📄'}</div>
       <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: brand.text }}>{props.children}</h2>
     </div>
@@ -96,12 +95,12 @@ function Button(props: {
 
 export default function GeneratePage() {
   const [toast, setToast] = useState<string | null>(null);
-  const showSoon = (msg = 'Coming soon — logic will be wired on the generate branch.') => {
+  const showSoon = (msg = 'Coming soon — functionality will be wired separately.') => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2500);
+    setTimeout(() => setToast(null), 2200);
   };
 
-  // --- Report Builder state (UI only) ---
+  // Report Builder UI state (placeholders)
   const [reportType, setReportType] = useState('');
   const [timePeriod, setTimePeriod] = useState('');
   const [topics, setTopics] = useState('');
@@ -113,7 +112,6 @@ export default function GeneratePage() {
 
   return (
     <div style={{ color: brand.text }}>
-      {/* Header / Intro */}
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900 }}>Generate Report</h1>
         <div style={{ color: brand.sub, marginTop: 6 }}>
@@ -121,7 +119,7 @@ export default function GeneratePage() {
         </div>
       </div>
 
-      {/* Popular Reports */}
+      {/* 1) Popular Reports */}
       <SectionTitle icon={<span>📈</span>}>Popular Reports</SectionTitle>
       <div
         style={{
@@ -131,6 +129,7 @@ export default function GeneratePage() {
           marginBottom: 18,
         }}
       >
+        {/* Card 1 */}
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
             <div
@@ -150,9 +149,7 @@ export default function GeneratePage() {
             </div>
             <div>
               <div style={{ fontWeight: 900, fontSize: 18 }}>Business Overview</div>
-              <div style={{ color: brand.sub, marginTop: 6 }}>
-                Comprehensive analysis of performance and key metrics
-              </div>
+              <div style={{ color: brand.sub, marginTop: 6 }}>Comprehensive analysis of performance and key metrics</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                 <Pill>Revenue Growth</Pill>
                 <Pill>Market Share</Pill>
@@ -160,11 +157,12 @@ export default function GeneratePage() {
               </div>
             </div>
             <div>
-              <Button onClick={() => showSoon('This Generate action will be wired later.')}>Generate Report →</Button>
+              <Button onClick={() => showSoon('Use this template → will open builder prefilled.')}>Generate →</Button>
             </div>
           </div>
         </Card>
 
+        {/* Card 2 */}
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
             <div
@@ -194,11 +192,12 @@ export default function GeneratePage() {
               </div>
             </div>
             <div>
-              <Button color={brand.third} onClick={() => showSoon()}>Generate Report →</Button>
+              <Button color={brand.third} onClick={() => showSoon()}>Generate →</Button>
             </div>
           </div>
         </Card>
 
+        {/* Card 3 */}
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
             <div
@@ -228,13 +227,13 @@ export default function GeneratePage() {
               </div>
             </div>
             <div>
-              <Button color={brand.secondary} onClick={() => showSoon()}>Generate Report →</Button>
+              <Button color={brand.secondary} onClick={() => showSoon()}>Generate →</Button>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* --- Report Builder (matches screenshot) --- */}
+      {/* 2) Report Builder */}
       <SectionTitle icon={<span>⚙️</span>}>Report Builder</SectionTitle>
       <Card>
         <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>Custom Report Configuration</div>
@@ -242,41 +241,16 @@ export default function GeneratePage() {
           Configure your report parameters and generate a custom analysis
         </div>
 
-        {/* Row 1: Selects (4) */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr 1fr',
-            gap: 12,
-          }}
-        >
+        {/* Select row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+          {/** Report Type */}
           <div>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Report Type</div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                border: `1px solid ${brand.border}`,
-                borderRadius: 12,
-                padding: '0 10px',
-                background: '#0f1115',
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${brand.border}`, borderRadius: 12, padding: '0 10px', background: '#0f1115' }}>
               <select
                 value={reportType}
                 onChange={(e) => setReportType(e.target.value)}
-                style={{
-                  appearance: 'none',
-                  WebkitAppearance: 'none',
-                  MozAppearance: 'none',
-                  width: '100%',
-                  padding: '12px 8px',
-                  background: 'transparent',
-                  color: brand.sub,
-                  border: 'none',
-                  outline: 'none',
-                  fontWeight: 700,
-                }}
+                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}
               >
                 <option value="">Select report type</option>
                 <option value="business_overview">Business Overview</option>
@@ -287,31 +261,14 @@ export default function GeneratePage() {
             </div>
           </div>
 
+          {/** Time Period */}
           <div>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Time Period</div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                border: `1px solid ${brand.border}`,
-                borderRadius: 12,
-                padding: '0 10px',
-                background: '#0f1115',
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${brand.border}`, borderRadius: 12, padding: '0 10px', background: '#0f1115' }}>
               <select
                 value={timePeriod}
                 onChange={(e) => setTimePeriod(e.target.value)}
-                style={{
-                  appearance: 'none',
-                  width: '100%',
-                  padding: '12px 8px',
-                  background: 'transparent',
-                  color: brand.sub,
-                  border: 'none',
-                  outline: 'none',
-                  fontWeight: 700,
-                }}
+                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}
               >
                 <option value="">Select period</option>
                 <option value="last_30">Last 30 days</option>
@@ -322,31 +279,14 @@ export default function GeneratePage() {
             </div>
           </div>
 
+          {/** Focus Topics */}
           <div>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Focus Topics</div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                border: `1px solid ${brand.border}`,
-                borderRadius: 12,
-                padding: '0 10px',
-                background: '#0f1115',
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${brand.border}`, borderRadius: 12, padding: '0 10px', background: '#0f1115' }}>
               <select
                 value={topics}
                 onChange={(e) => setTopics(e.target.value)}
-                style={{
-                  appearance: 'none',
-                  width: '100%',
-                  padding: '12px 8px',
-                  background: 'transparent',
-                  color: brand.sub,
-                  border: 'none',
-                  outline: 'none',
-                  fontWeight: 700,
-                }}
+                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}
               >
                 <option value="">Select topics</option>
                 <option value="growth">Growth & revenue</option>
@@ -357,31 +297,14 @@ export default function GeneratePage() {
             </div>
           </div>
 
+          {/** Output Format */}
           <div>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Output Format</div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                border: `1px solid ${brand.border}`,
-                borderRadius: 12,
-                padding: '0 10px',
-                background: '#0f1115',
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${brand.border}`, borderRadius: 12, padding: '0 10px', background: '#0f1115' }}>
               <select
                 value={format}
                 onChange={(e) => setFormat(e.target.value)}
-                style={{
-                  appearance: 'none',
-                  width: '100%',
-                  padding: '12px 8px',
-                  background: 'transparent',
-                  color: brand.sub,
-                  border: 'none',
-                  outline: 'none',
-                  fontWeight: 700,
-                }}
+                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}
               >
                 <option value="">Select format</option>
                 <option value="pdf">PDF</option>
@@ -393,52 +316,21 @@ export default function GeneratePage() {
           </div>
         </div>
 
-        {/* Row 2: Visual Elements / Context checkboxes */}
+        {/* Checkboxes */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              border: `1px solid ${brand.border}`,
-              borderRadius: 12,
-              padding: '12px',
-              cursor: 'pointer',
-            }}
-          >
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, cursor: 'pointer' }}>
             <span style={{ fontSize: 18 }}>🖼️</span>
-            <input
-              type="checkbox"
-              checked={includeVisuals}
-              onChange={(e) => setIncludeVisuals(e.target.checked)}
-              style={{ width: 18, height: 18 }}
-            />
+            <input type="checkbox" checked={includeVisuals} onChange={e => setIncludeVisuals(e.target.checked)} style={{ width: 18, height: 18 }} />
             <div style={{ fontWeight: 800 }}>Include charts, graphs, and visual analytics</div>
           </label>
-
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              border: `1px solid ${brand.border}`,
-              borderRadius: 12,
-              padding: '12px',
-              cursor: 'pointer',
-            }}
-          >
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, cursor: 'pointer' }}>
             <span style={{ fontSize: 18 }}>💬</span>
-            <input
-              type="checkbox"
-              checked={includeContext}
-              onChange={(e) => setIncludeContext(e.target.checked)}
-              style={{ width: 18, height: 18 }}
-            />
+            <input type="checkbox" checked={includeContext} onChange={e => setIncludeContext(e.target.checked)} style={{ width: 18, height: 18 }} />
             <div style={{ fontWeight: 800 }}>Add contextual questions and AI insights</div>
           </label>
         </div>
 
-        {/* Row 3: Custom requirements text area */}
+        {/* Requirements */}
         <div style={{ marginTop: 14 }}>
           <div style={{ fontWeight: 900, marginBottom: 6 }}>Custom Requirements</div>
           <textarea
@@ -446,79 +338,84 @@ export default function GeneratePage() {
             onChange={(e) => setRequirements(e.target.value)}
             rows={6}
             placeholder="Describe any specific requirements, focus areas, or questions you'd like the report to address..."
-            style={{
-              width: '100%',
-              resize: 'vertical',
-              border: `1px solid ${brand.border}`,
-              borderRadius: 12,
-              padding: 12,
-              background: '#0f1115',
-              color: brand.text,
-            }}
+            style={{ width: '100%', resize: 'vertical', border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, background: '#0f1115', color: brand.text }}
           />
         </div>
 
-        {/* Row 4: Report title input */}
+        {/* Title */}
         <div style={{ marginTop: 14 }}>
           <div style={{ fontWeight: 900, marginBottom: 6 }}>Report Title</div>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Enter a custom title for your report"
-            style={{
-              width: '100%',
-              border: `1px solid ${brand.border}`,
-              borderRadius: 12,
-              padding: 12,
-              background: '#0f1115',
-              color: brand.text,
-              fontWeight: 700,
-            }}
+            style={{ width: '100%', border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, background: '#0f1115', color: brand.text, fontWeight: 700 }}
           />
         </div>
 
-        {/* Footer: estimated time + actions */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr auto',
-            alignItems: 'center',
-            gap: 12,
-            marginTop: 16,
-          }}
-        >
+        {/* Footer */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, marginTop: 16 }}>
           <div style={{ color: brand.sub }}>Estimated generation time: 2–5 minutes</div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <Button variant="outline" onClick={() => showSoon('Template saving will be added later.')}>
-              Save as Template
-            </Button>
-            <Button onClick={() => showSoon('Generate logic will be implemented on the logic branch.')}>
-              Generate Report
-            </Button>
+            <Button variant="outline" onClick={() => showSoon('Template saving will be added later.')}>Save as Template</Button>
+            <Button onClick={() => showSoon('Generate logic will be implemented on the logic branch.')}>Generate Report</Button>
           </div>
         </div>
       </Card>
 
-      {/* Suggested Updates */}
-      <SectionTitle icon={<span>📅</span>}>Suggested Updates</SectionTitle>
+      {/* 3) Trending Topics */}
+      <SectionTitle icon={<span>📊</span>} style={{ marginTop: 18 }}>Trending Topics</SectionTitle>
+      <Card>
+        {[
+          { label: 'AI Integration', tag: 'Hot', change: '+24%' },
+          { label: 'Supply Chain Resilience', tag: 'Rising', change: '+18%' },
+          { label: 'Sustainability Reporting', tag: 'Trending', change: '+15%' },
+          { label: 'Digital Transformation', tag: 'Popular', change: '+12%' },
+          { label: 'ESG Compliance', tag: 'Growing', change: '+9%' },
+        ].map((t, i) => (
+          <div key={t.label}
+            style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', alignItems: 'center', gap: 12, padding: '10px 6px', borderTop: i === 0 ? 'none' : `1px solid ${brand.border}` }}>
+            <div style={{ width: 10, height: 10, borderRadius: 999, background: brand.primary }} />
+            <div style={{ fontWeight: 800 }}>{t.label}</div>
+            <span style={{ justifySelf: 'start', background: '#2b2437', color: brand.primary, border: `1px solid ${brand.primary}`, borderRadius: 999, padding: '4px 10px', fontSize: 12, fontWeight: 900 }}>
+              {t.tag}
+            </span>
+            <div style={{ color: brand.secondary, fontWeight: 900 }}>{t.change}</div>
+          </div>
+        ))}
+      </Card>
+
+      {/* 4) Industry Updates */}
+      <SectionTitle icon={<span>🌿</span>} style={{ marginTop: 18 }}>Industry Updates</SectionTitle>
+      <Card>
+        {[
+          { title: 'New ESG Disclosure Requirements', cat: 'Regulatory', time: '2 hours ago' },
+          { title: 'AI Ethics Guidelines Released', cat: 'Technology', time: '1 day ago' },
+          { title: 'Global Supply Chain Index Update', cat: 'Market Data', time: '3 days ago' },
+        ].map((u, i) => (
+          <div key={u.title} style={{ padding: '14px 6px', borderTop: i === 0 ? 'none' : `1px solid ${brand.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 4, height: 32, background: brand.third, borderRadius: 4 }} />
+              <div style={{ fontWeight: 900 }}>{u.title}</div>
+              <span style={{ marginLeft: 'auto', background: '#2a281e', border: `1px solid ${brand.secondary}`, color: '#f3e2a4', padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 900 }}>
+                {u.cat}
+              </span>
+            </div>
+            <div style={{ color: brand.sub, marginLeft: 14, marginTop: 6 }}>🕒 {u.time}</div>
+          </div>
+        ))}
+      </Card>
+
+      {/* 5) Suggested Updates */}
+      <SectionTitle icon={<span>📅</span>} style={{ marginTop: 18 }}>Suggested Updates</SectionTitle>
       <Card>
         {[
           { title: 'Q3 Financial Performance Report', sub: 'Quarterly deadline approaching', days: '45 days ago', dot: '#e04a59' },
           { title: 'Customer Satisfaction Analysis', sub: 'New survey data available', days: '32 days ago', dot: '#d2b24a' },
           { title: 'Market Competitive Analysis', sub: 'Industry shifts detected', days: '28 days ago', dot: '#8cb874' },
         ].map((s, i) => (
-          <div
-            key={s.title}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr auto',
-              gap: 12,
-              alignItems: 'center',
-              padding: 14,
-              borderRadius: 12,
-              border: i === 0 ? 'none' : `1px solid ${brand.border}`,
-            }}
-          >
+          <div key={s.title}
+            style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center', padding: 14, borderRadius: 12, borderTop: i === 0 ? 'none' : `1px solid ${brand.border}` }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 10, height: 10, borderRadius: 999, background: s.dot }} />
@@ -528,9 +425,7 @@ export default function GeneratePage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ color: brand.sub }}>{s.days}</div>
-              <Button variant="outline" onClick={() => showSoon('Update flow will be wired later.')}>
-                Update
-              </Button>
+              <Button variant="outline" onClick={() => showSoon('Update flow will be wired later.')}>Update</Button>
             </div>
           </div>
         ))}
@@ -541,17 +436,10 @@ export default function GeneratePage() {
         <div
           role="status"
           style={{
-            position: 'fixed',
-            right: 16,
-            bottom: 16,
-            background: '#2b2437',
-            border: `1px solid ${brand.border}`,
-            color: brand.light,
-            padding: '10px 12px',
-            borderRadius: 10,
-            maxWidth: 520,
-            boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
-            zIndex: 1000,
+            position: 'fixed', right: 16, bottom: 16,
+            background: '#2b2437', border: `1px solid ${brand.border}`,
+            color: brand.light, padding: '10px 12px', borderRadius: 10,
+            maxWidth: 520, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', zIndex: 1000,
           }}
         >
           {toast}
