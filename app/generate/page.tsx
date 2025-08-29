@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
+// ------- brand palette (matches your figma) -------
 const brand = {
   primary: '#9881b8',
   secondary: '#e5c564',
@@ -14,6 +15,7 @@ const brand = {
   light: '#ffffff',
 };
 
+// ------- tiny UI atoms -------
 function Card(props: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div
@@ -48,7 +50,7 @@ function Pill(props: { children: React.ReactNode; tone?: 'primary' | 'secondary'
         display: 'inline-flex',
         alignItems: 'center',
         gap: 6,
-        padding: '4px 10px',
+        padding: '6px 12px',
         borderRadius: 999,
         border: `1px solid ${tone}`,
         color: tone,
@@ -65,26 +67,33 @@ function Pill(props: { children: React.ReactNode; tone?: 'primary' | 'secondary'
 function Button(props: {
   children: React.ReactNode;
   onClick?: () => void;
-  variant?: 'solid' | 'outline';
+  variant?: 'solid' | 'outline' | 'ghost';
   color?: string;
   disabled?: boolean;
   style?: React.CSSProperties;
+  title?: string;
 }) {
   const color = props.color ?? brand.primary;
-  const solid = props.variant !== 'outline';
+  const v = props.variant ?? 'solid';
+  const bg =
+    v === 'solid' ? color : v === 'outline' ? 'transparent' : 'transparent';
+  const brd =
+    v === 'solid' ? `1px solid ${color}` : v === 'outline' ? `1px solid ${color}` : `1px dashed ${brand.border}`;
+  const text = v === 'solid' ? '#fff' : color;
   return (
     <button
+      title={props.title}
       onClick={props.onClick}
       disabled={props.disabled}
       style={{
         padding: '10px 16px',
         borderRadius: 12,
-        border: `1px solid ${color}`,
-        background: solid ? color : 'transparent',
-        color: solid ? '#fff' : color,
+        border: brd,
+        background: props.disabled ? '#2a2f3a' : bg,
+        color: props.disabled ? '#8892a0' : text,
         fontWeight: 900,
         cursor: props.disabled ? 'not-allowed' : 'pointer',
-        opacity: props.disabled ? 0.7 : 1,
+        opacity: props.disabled ? 0.8 : 1,
         ...props.style,
       }}
     >
@@ -93,14 +102,250 @@ function Button(props: {
   );
 }
 
+// ------- local helpers (no deps) -------
+const API_BASE = ''; // use Next.js rewrite: fetch('/api/...')
+
+function getTokenCandidates(): (string | null)[] {
+  if (typeof window === 'undefined') return [];
+  return [
+    localStorage.getItem('auth_token'),
+    localStorage.getItem('access_token'),
+    localStorage.getItem('sb_access_token'),
+    localStorage.getItem('enrich_token'),
+  ];
+}
+
+function buildHeaders(): HeadersInit {
+  const t = getTokenCandidates().find(Boolean);
+  return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+// quick CSV fallback if backend didn’t attach exports
+function toCsvFallback(obj: any): string {
+  // extremely simple 2-column CSV (key,value) for Canva import
+  const rows: string[] = [['key', 'value']];
+  const walk = (prefix: string, v: any) => {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      Object.keys(v).forEach((k) => walk(prefix ? `${prefix}.${k}` : k, v[k]));
+    } else {
+      rows.push([prefix, v == null ? '' : String(v)]);
+    }
+  };
+  walk('', obj);
+  return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+}
+
+function downloadBlob(filename: string, content: Blob | string, type = 'text/plain') {
+  const blob = content instanceof Blob ? content : new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ------- types (loose) -------
+type ReportContent = {
+  business_name?: string;
+  contact_info?: string;
+  overview?: {
+    growth_transparency_info?: string;
+    claim_confidence?: { unverified?: number; estimated?: number; verified?: number };
+  };
+  goals?: string;
+  certifications?: string;
+  sections?: {
+    operations_information?: string;
+    localimpact_information?: string;
+    peoplepartners_information?: string;
+    unwto_information?: string;
+    ctc_information?: string;
+  };
+  insights?: {
+    local_supplier_details?: string;
+    employee_details?: string;
+    economic_details?: string;
+  };
+  recommendations?: {
+    goals?: string;
+    operations?: string;
+  };
+};
+
+type ReportRow = {
+  id: string;
+  report_type: string;
+  created_at?: string;
+  content: ReportContent;
+  exports?: {
+    pdf_url?: string;
+    csv_url?: string;
+    json_url?: string;
+  };
+};
+
+// ------- preview modal -------
+function Modal(props: { open: boolean; onClose: () => void; children: React.ReactNode; width?: number }) {
+  if (!props.open) return null;
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.6)',
+        display: 'grid',
+        placeItems: 'center',
+        zIndex: 1000,
+      }}
+      onClick={props.onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: props.width ?? 960,
+          maxWidth: '94vw',
+          maxHeight: '90vh',
+          overflow: 'auto',
+          background: brand.bg,
+          border: `1px solid ${brand.border}`,
+          borderRadius: 16,
+          boxShadow: '0 10px 30px rgba(0,0,0,.45)',
+        }}
+      >
+        {props.children}
+      </div>
+    </div>
+  );
+}
+
+function PreviewOverview({ report }: { report: ReportRow | null }) {
+  if (!report) {
+    return (
+      <div style={{ padding: 18, color: brand.sub }}>
+        No report yet. Generate a <b>Business Overview</b> to preview it here.
+      </div>
+    );
+  }
+  const c = report.content || {};
+  const claim = c.overview?.claim_confidence || {};
+  const label = (s: string) => <div style={{ fontWeight: 900, marginBottom: 4 }}>{s}</div>;
+
+  return (
+    <div style={{ padding: 18 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: 12,
+          alignItems: 'center',
+          marginBottom: 10,
+          background: '#1a1f29',
+          border: `1px solid ${brand.border}`,
+          borderRadius: 12,
+          padding: 14,
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 22 }}>{c.business_name || 'BUSINESS_NAME'}</div>
+          <div style={{ color: brand.sub, fontWeight: 800 }}>{c.contact_info || 'CONTACT_INFO'}</div>
+        </div>
+        <Pill>SUMMARY</Pill>
+      </div>
+
+      <h3 style={{ textAlign: 'center', marginTop: 6, marginBottom: 14, color: brand.primary, fontSize: 22 }}>
+        OVERVIEW
+      </h3>
+
+      {/* Growth Transparency + Claim Confidence */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <Card>
+          {label('Growth Transparency')}
+          <div style={{ color: brand.sub }}>{c.overview?.growth_transparency_info || 'Growth_Transparency_Info'}</div>
+        </Card>
+        <Card>
+          {label('Claim Confidence')}
+          <div style={{ color: brand.sub }}>
+            {`Unverified: ${claim.unverified ?? 25}% • Estimated: ${claim.estimated ?? 35}% • Verified: ${
+              claim.verified ?? 40
+            }%`}
+          </div>
+        </Card>
+      </div>
+
+      {/* Goals + Certificates */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+        <Card>
+          {label('Goals')}
+          <div style={{ color: brand.sub }}>{c.goals || 'Goal_Information'}</div>
+        </Card>
+        <Card>
+          {label('3rd Party Certificates')}
+          <div style={{ color: brand.sub }}>{c.certifications || 'Certification_Information'}</div>
+        </Card>
+      </div>
+
+      {/* Sections grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+        <Card>
+          {label('Operations')}
+          <div style={{ color: brand.sub }}>{c.sections?.operations_information || 'operations_information'}</div>
+        </Card>
+        <Card>
+          {label('Global Standards (UNWTO)')}
+          <div style={{ color: brand.sub }}>{c.sections?.unwto_information || 'UNWTO_information'}</div>
+        </Card>
+        <Card>
+          {label('Local Impact')}
+          <div style={{ color: brand.sub }}>{c.sections?.localimpact_information || 'localimpact_information'}</div>
+        </Card>
+        <Card>
+          {label('National Standards (CTC)')}
+          <div style={{ color: brand.sub }}>{c.sections?.ctc_information || 'CTC_information'}</div>
+        </Card>
+        <Card style={{ gridColumn: '1 / span 2' }}>
+          <h3 style={{ textAlign: 'center', color: brand.primary, margin: 0, marginBottom: 10 }}>Insights</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div>
+              {label('Local Suppliers')}
+              <div style={{ color: brand.sub }}>{c.insights?.local_supplier_details || 'local_supplier_details'}</div>
+            </div>
+            <div>
+              {label('Employee')}
+              <div style={{ color: brand.sub }}>{c.insights?.employee_details || 'employee_details'}</div>
+            </div>
+            <div>
+              {label('Economic Impact')}
+              <div style={{ color: brand.sub }}>{c.insights?.economic_details || 'economic_details'}</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Recommendations */}
+      <Card style={{ marginTop: 12 }}>
+        <h3 style={{ marginTop: 0, color: brand.primary }}>Recommendations</h3>
+        <div style={{ color: brand.sub, marginBottom: 6 }}>
+          {c.recommendations?.goals || 'recommendations_goals'}
+        </div>
+        <div style={{ color: brand.sub }}>{c.recommendations?.operations || 'recommendations_operations'}</div>
+      </Card>
+    </div>
+  );
+}
+
+// ------- PAGE -------
 export default function GeneratePage() {
+  // toast
   const [toast, setToast] = useState<string | null>(null);
-  const showSoon = (msg = 'Coming soon — functionality will be wired separately.') => {
+  const notify = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2200);
+    setTimeout(() => setToast(null), 2400);
   };
 
-  // Report Builder UI state (placeholders)
+  // Report Builder (UI only, unchanged)
   const [reportType, setReportType] = useState('');
   const [timePeriod, setTimePeriod] = useState('');
   const [topics, setTopics] = useState('');
@@ -110,6 +355,126 @@ export default function GeneratePage() {
   const [requirements, setRequirements] = useState('');
   const [title, setTitle] = useState('');
 
+  // business id + latest report
+  const [bizId, setBizId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [latest, setLatest] = useState<ReportRow | null>(null);
+
+  // preview modal
+  const [open, setOpen] = useState(false);
+
+  // discover business + latest reports on mount
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        // 1) who am I
+        const me = await fetch(`${API_BASE}/api/auth/me`, { headers: buildHeaders(), cache: 'no-store' });
+        if (!me.ok) throw new Error(`/api/auth/me -> ${me.status}`);
+        const m = await me.json();
+        const b: string | undefined =
+          m?.profile?.id || m?.profile?.business_id || m?.profile?.businessId || m?.profile?.business?.id;
+        if (!alive) return;
+        if (b) setBizId(b);
+
+        // 2) latest reports
+        if (b) {
+          const r = await fetch(`${API_BASE}/api/reports/list/${encodeURIComponent(b)}`, {
+            headers: buildHeaders(),
+            cache: 'no-store',
+          });
+          if (r.ok) {
+            const data = await r.json();
+            const first: ReportRow | undefined = (data?.reports || [])[0];
+            if (alive) setLatest(first || null);
+          }
+        }
+      } catch (e) {
+        // no-op; UI still works
+        console.warn('[generate] bootstrap error', e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function refreshLatest() {
+    if (!bizId) return;
+    try {
+      const r = await fetch(`${API_BASE}/api/reports/list/${encodeURIComponent(bizId)}`, {
+        headers: buildHeaders(),
+        cache: 'no-store',
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const first: ReportRow | undefined = (data?.reports || [])[0];
+        setLatest(first || null);
+      }
+    } catch (e) {
+      console.warn('[generate] refresh list error', e);
+    }
+  }
+
+  async function generateBusinessOverview() {
+    if (!bizId) {
+      notify('No business profile found. Please log in again.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/generate-business-overview`, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({ business_id: bizId }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status} : ${text || 'Internal Server Error'}`);
+      }
+      // server should insert & return a report; if not, we re-list
+      await refreshLatest();
+      setOpen(true);
+      notify('Report generated');
+    } catch (e: any) {
+      console.error('[generate] error', e);
+      notify(`Failed to generate: ${e?.message || 'error'}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // downloads (prefer backend export URLs, otherwise fallbacks)
+  const pdfUrl = latest?.exports?.pdf_url || '';
+  const csvUrl = latest?.exports?.csv_url || '';
+  const jsonUrl = latest?.exports?.json_url || '';
+
+  const canDownloadPdf = !!pdfUrl;
+  const canDownloadCsv = !!csvUrl || !!latest?.content;
+  const canDownloadJson = !!jsonUrl || !!latest?.content;
+
+  const handleDownloadJSON = async () => {
+    if (jsonUrl) {
+      window.open(jsonUrl, '_blank', 'noopener');
+      return;
+    }
+    if (latest?.content) {
+      downloadBlob(`business_overview_${latest.id}.json`, JSON.stringify(latest.content, null, 2), 'application/json');
+    }
+  };
+
+  const handleDownloadCSV = async () => {
+    if (csvUrl) {
+      window.open(csvUrl, '_blank', 'noopener');
+      return;
+    }
+    if (latest?.content) {
+      const csv = toCsvFallback(latest.content);
+      downloadBlob(`business_overview_${latest.id}.csv`, csv, 'text/csv');
+    }
+  };
+
+  // —————— PAGE UI ——————
   return (
     <div style={{ color: brand.text }}>
       <div style={{ marginBottom: 14 }}>
@@ -119,7 +484,7 @@ export default function GeneratePage() {
         </div>
       </div>
 
-      {/* 1) Popular Reports */}
+      {/* 1) Popular Reports (Business Overview wired) */}
       <SectionTitle icon={<span>📈</span>}>Popular Reports</SectionTitle>
       <div
         style={{
@@ -129,7 +494,7 @@ export default function GeneratePage() {
           marginBottom: 18,
         }}
       >
-        {/* Card 1 */}
+        {/* BUSINESS OVERVIEW (WIRED) */}
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
             <div
@@ -148,21 +513,25 @@ export default function GeneratePage() {
               📊
             </div>
             <div>
-              <div style={{ fontWeight: 900, fontSize: 18 }}>Business Overview</div>
-              <div style={{ color: brand.sub, marginTop: 6 }}>Comprehensive analysis of performance and key metrics</div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 900, fontSize: 22 }}>Business Overview</div>
+              <div style={{ color: brand.sub, marginTop: 6, fontSize: 18, lineHeight: 1.4 }}>
+                Comprehensive analysis of performance and key metrics
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
                 <Pill>Revenue Growth</Pill>
                 <Pill>Market Share</Pill>
                 <Pill>Operational Efficiency</Pill>
               </div>
             </div>
             <div>
-              <Button onClick={() => showSoon('Use this template → will open builder prefilled.')}>Generate →</Button>
+              <Button onClick={generateBusinessOverview} disabled={loading} style={{ minWidth: 160 }}>
+                {loading ? 'Generating…' : 'Generate →'}
+              </Button>
             </div>
           </div>
         </Card>
 
-        {/* Card 2 */}
+        {/* (The other two cards remain UI-only for now) */}
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
             <div
@@ -192,12 +561,13 @@ export default function GeneratePage() {
               </div>
             </div>
             <div>
-              <Button color={brand.third} onClick={() => showSoon()}>Generate →</Button>
+              <Button color={brand.third} variant="outline" onClick={() => notify('Coming soon')}>
+                Generate →
+              </Button>
             </div>
           </div>
         </Card>
 
-        {/* Card 3 */}
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '64px 1fr auto', gap: 14, alignItems: 'center' }}>
             <div
@@ -227,13 +597,15 @@ export default function GeneratePage() {
               </div>
             </div>
             <div>
-              <Button color={brand.secondary} onClick={() => showSoon()}>Generate →</Button>
+              <Button color={brand.secondary} variant="outline" onClick={() => notify('Coming soon')}>
+                Generate →
+              </Button>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* 2) Report Builder */}
+      {/* 2) Report Builder (unchanged UI-only) */}
       <SectionTitle icon={<span>⚙️</span>}>Report Builder</SectionTitle>
       <Card>
         <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>Custom Report Configuration</div>
@@ -241,17 +613,12 @@ export default function GeneratePage() {
           Configure your report parameters and generate a custom analysis
         </div>
 
-        {/* Select row */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
-          {/** Report Type */}
           <div>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Report Type</div>
             <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${brand.border}`, borderRadius: 12, padding: '0 10px', background: '#0f1115' }}>
-              <select
-                value={reportType}
-                onChange={(e) => setReportType(e.target.value)}
-                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}
-              >
+              <select value={reportType} onChange={(e) => setReportType(e.target.value)}
+                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}>
                 <option value="">Select report type</option>
                 <option value="business_overview">Business Overview</option>
                 <option value="local_impact">Local Impact</option>
@@ -260,16 +627,11 @@ export default function GeneratePage() {
               <span style={{ color: brand.sub, fontSize: 12, marginLeft: 8 }}>▾</span>
             </div>
           </div>
-
-          {/** Time Period */}
           <div>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Time Period</div>
             <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${brand.border}`, borderRadius: 12, padding: '0 10px', background: '#0f1115' }}>
-              <select
-                value={timePeriod}
-                onChange={(e) => setTimePeriod(e.target.value)}
-                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}
-              >
+              <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)}
+                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}>
                 <option value="">Select period</option>
                 <option value="last_30">Last 30 days</option>
                 <option value="last_quarter">Last quarter</option>
@@ -278,16 +640,11 @@ export default function GeneratePage() {
               <span style={{ color: brand.sub, fontSize: 12, marginLeft: 8 }}>▾</span>
             </div>
           </div>
-
-          {/** Focus Topics */}
           <div>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Focus Topics</div>
             <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${brand.border}`, borderRadius: 12, padding: '0 10px', background: '#0f1115' }}>
-              <select
-                value={topics}
-                onChange={(e) => setTopics(e.target.value)}
-                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}
-              >
+              <select value={topics} onChange={(e) => setTopics(e.target.value)}
+                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}>
                 <option value="">Select topics</option>
                 <option value="growth">Growth & revenue</option>
                 <option value="sustainability">Sustainability</option>
@@ -296,16 +653,11 @@ export default function GeneratePage() {
               <span style={{ color: brand.sub, fontSize: 12, marginLeft: 8 }}>▾</span>
             </div>
           </div>
-
-          {/** Output Format */}
           <div>
             <div style={{ fontWeight: 900, marginBottom: 6 }}>Output Format</div>
             <div style={{ display: 'flex', alignItems: 'center', border: `1px solid ${brand.border}`, borderRadius: 12, padding: '0 10px', background: '#0f1115' }}>
-              <select
-                value={format}
-                onChange={(e) => setFormat(e.target.value)}
-                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}
-              >
+              <select value={format} onChange={(e) => setFormat(e.target.value)}
+                style={{ appearance: 'none', width: '100%', padding: '12px 8px', background: 'transparent', color: brand.sub, border: 'none', outline: 'none', fontWeight: 700 }}>
                 <option value="">Select format</option>
                 <option value="pdf">PDF</option>
                 <option value="csv">CSV</option>
@@ -316,7 +668,6 @@ export default function GeneratePage() {
           </div>
         </div>
 
-        {/* Checkboxes */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, cursor: 'pointer' }}>
             <span style={{ fontSize: 18 }}>🖼️</span>
@@ -330,35 +681,26 @@ export default function GeneratePage() {
           </label>
         </div>
 
-        {/* Requirements */}
         <div style={{ marginTop: 14 }}>
           <div style={{ fontWeight: 900, marginBottom: 6 }}>Custom Requirements</div>
-          <textarea
-            value={requirements}
-            onChange={(e) => setRequirements(e.target.value)}
-            rows={6}
+          <textarea value={requirements} onChange={(e) => setRequirements(e.target.value)} rows={6}
             placeholder="Describe any specific requirements, focus areas, or questions you'd like the report to address..."
-            style={{ width: '100%', resize: 'vertical', border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, background: '#0f1115', color: brand.text }}
-          />
+            style={{ width: '100%', resize: 'vertical', border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, background: '#0f1115', color: brand.text }} />
         </div>
 
-        {/* Title */}
         <div style={{ marginTop: 14 }}>
           <div style={{ fontWeight: 900, marginBottom: 6 }}>Report Title</div>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Enter a custom title for your report"
-            style={{ width: '100%', border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, background: '#0f1115', color: brand.text, fontWeight: 700 }}
-          />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter a custom title for your report"
+            style={{ width: '100%', border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, background: '#0f1115', color: brand.text, fontWeight: 700 }} />
         </div>
 
-        {/* Footer */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, marginTop: 16 }}>
           <div style={{ color: brand.sub }}>Estimated generation time: 2–5 minutes</div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <Button variant="outline" onClick={() => showSoon('Template saving will be added later.')}>Save as Template</Button>
-            <Button onClick={() => showSoon('Generate logic will be implemented on the logic branch.')}>Generate Report</Button>
+            <Button variant="outline" onClick={() => notify('Template saving coming soon')}>Save as Template</Button>
+            <Button variant="ghost" onClick={() => notify('Use the Business Overview card above for now')}>
+              Generate Report
+            </Button>
           </div>
         </div>
       </Card>
@@ -425,13 +767,33 @@ export default function GeneratePage() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ color: brand.sub }}>{s.days}</div>
-              <Button variant="outline" onClick={() => showSoon('Update flow will be wired later.')}>Update</Button>
+              <Button variant="outline" onClick={() => notify('Update flow will be wired later.')}>Update</Button>
             </div>
           </div>
         ))}
       </Card>
 
-      {/* tiny toast */}
+      {/* Preview modal */}
+      <Modal open={open} onClose={() => setOpen(false)} width={1000}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', padding: 12, borderBottom: `1px solid ${brand.border}` }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Business Overview – Preview</div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Button variant="outline" onClick={handleDownloadJSON} disabled={!canDownloadJson} title="Download JSON">
+              JSON
+            </Button>
+            <Button variant="outline" onClick={handleDownloadCSV} disabled={!canDownloadCsv} title="Download Canva CSV">
+              Canva CSV
+            </Button>
+            <Button variant="outline" onClick={() => window.open(pdfUrl, '_blank', 'noopener')} disabled={!canDownloadPdf} title="Open PDF">
+              PDF
+            </Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Close</Button>
+          </div>
+        </div>
+        <PreviewOverview report={latest} />
+      </Modal>
+
+      {/* toast */}
       {toast && (
         <div
           role="status"
