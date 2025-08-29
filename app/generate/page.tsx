@@ -33,7 +33,7 @@ function Card(props: { children: React.ReactNode; style?: React.CSSProperties })
 
 function SectionTitle(props: { icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0' }}>
       <div style={{ fontSize: 18 }}>{props.icon ?? '📄'}</div>
       <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: brand.text }}>{props.children}</h2>
     </div>
@@ -63,12 +63,20 @@ function Pill(props: { children: React.ReactNode; tone?: 'primary' | 'secondary'
   );
 }
 
-function Button(props: { children: React.ReactNode; onClick?: () => void; variant?: 'solid' | 'outline'; color?: string }) {
+function Button(props: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: 'solid' | 'outline';
+  color?: string;
+  disabled?: boolean;
+  style?: React.CSSProperties;
+}) {
   const color = props.color ?? brand.primary;
   const solid = props.variant !== 'outline';
   return (
     <button
       onClick={props.onClick}
+      disabled={props.disabled}
       style={{
         padding: '10px 16px',
         borderRadius: 12,
@@ -76,7 +84,9 @@ function Button(props: { children: React.ReactNode; onClick?: () => void; varian
         background: solid ? color : 'transparent',
         color: solid ? '#fff' : color,
         fontWeight: 900,
-        cursor: 'pointer',
+        cursor: props.disabled ? 'not-allowed' : 'pointer',
+        opacity: props.disabled ? 0.7 : 1,
+        ...props.style,
       }}
     >
       {props.children}
@@ -90,6 +100,16 @@ export default function GeneratePage() {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
   };
+
+  // --- Report Builder state (UI only) ---
+  const [reportType, setReportType] = useState('');
+  const [timePeriod, setTimePeriod] = useState('');
+  const [topics, setTopics] = useState('');
+  const [format, setFormat] = useState('');
+  const [includeVisuals, setIncludeVisuals] = useState(true);
+  const [includeContext, setIncludeContext] = useState(true);
+  const [requirements, setRequirements] = useState('');
+  const [title, setTitle] = useState('');
 
   return (
     <div style={{ color: brand.text }}>
@@ -214,78 +234,269 @@ export default function GeneratePage() {
         </Card>
       </div>
 
-      {/* Trending Topics */}
-      <SectionTitle icon={<span>📈</span>}>Trending Topics</SectionTitle>
+      {/* --- Report Builder (matches screenshot) --- */}
+      <SectionTitle icon={<span>⚙️</span>}>Report Builder</SectionTitle>
       <Card>
-        {[
-          { label: 'AI Integration', tag: 'Hot', change: '+24%' },
-          { label: 'Supply Chain Resilience', tag: 'Rising', change: '+18%' },
-          { label: 'Sustainability Reporting', tag: 'Trending', change: '+15%' },
-          { label: 'Digital Transformation', tag: 'Popular', change: '+12%' },
-          { label: 'ESG Compliance', tag: 'Growing', change: '+9%' },
-        ].map((t, i) => (
-          <div
-            key={t.label}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'auto 1fr auto auto',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 6px',
-              borderTop: i === 0 ? 'none' : `1px solid ${brand.border}`,
-            }}
-          >
-            <div style={{ width: 10, height: 10, borderRadius: 999, background: brand.primary }} />
-            <div style={{ fontWeight: 800 }}>{t.label}</div>
-            <span
+        <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>Custom Report Configuration</div>
+        <div style={{ color: brand.sub, marginBottom: 12 }}>
+          Configure your report parameters and generate a custom analysis
+        </div>
+
+        {/* Row 1: Selects (4) */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr 1fr',
+            gap: 12,
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Report Type</div>
+            <div
               style={{
-                justifySelf: 'start',
-                background: '#2b2437',
-                color: brand.primary,
-                border: `1px solid ${brand.primary}`,
-                borderRadius: 999,
-                padding: '4px 10px',
-                fontSize: 12,
-                fontWeight: 900,
+                display: 'flex',
+                alignItems: 'center',
+                border: `1px solid ${brand.border}`,
+                borderRadius: 12,
+                padding: '0 10px',
+                background: '#0f1115',
               }}
             >
-              {t.tag}
-            </span>
-            <div style={{ color: brand.secondary, fontWeight: 900 }}>{t.change}</div>
-          </div>
-        ))}
-      </Card>
-
-      {/* Industry Updates */}
-      <SectionTitle icon={<span>🌿</span>}>Industry Updates</SectionTitle>
-      <Card>
-        {[
-          { title: 'New ESG Disclosure Requirements', cat: 'Regulatory', time: '2 hours ago' },
-          { title: 'AI Ethics Guidelines Released', cat: 'Technology', time: '1 day ago' },
-          { title: 'Global Supply Chain Index Update', cat: 'Market Data', time: '3 days ago' },
-        ].map((u, i) => (
-          <div key={u.title} style={{ padding: '14px 6px', borderTop: i === 0 ? 'none' : `1px solid ${brand.border}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 4, height: 32, background: brand.third, borderRadius: 4 }} />
-              <div style={{ fontWeight: 900 }}>{u.title}</div>
-              <span
+              <select
+                value={reportType}
+                onChange={(e) => setReportType(e.target.value)}
                 style={{
-                  marginLeft: 'auto',
-                  background: '#2a281e',
-                  border: `1px solid ${brand.secondary}`,
-                  color: '#f3e2a4',
-                  padding: '4px 10px',
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 900,
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  width: '100%',
+                  padding: '12px 8px',
+                  background: 'transparent',
+                  color: brand.sub,
+                  border: 'none',
+                  outline: 'none',
+                  fontWeight: 700,
                 }}
               >
-                {u.cat}
-              </span>
+                <option value="">Select report type</option>
+                <option value="business_overview">Business Overview</option>
+                <option value="local_impact">Local Impact</option>
+                <option value="energy_resources">Energy & Resources</option>
+              </select>
+              <span style={{ color: brand.sub, fontSize: 12, marginLeft: 8 }}>▾</span>
             </div>
-            <div style={{ color: brand.sub, marginLeft: 14, marginTop: 6 }}>🕒 {u.time}</div>
           </div>
-        ))}
+
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Time Period</div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                border: `1px solid ${brand.border}`,
+                borderRadius: 12,
+                padding: '0 10px',
+                background: '#0f1115',
+              }}
+            >
+              <select
+                value={timePeriod}
+                onChange={(e) => setTimePeriod(e.target.value)}
+                style={{
+                  appearance: 'none',
+                  width: '100%',
+                  padding: '12px 8px',
+                  background: 'transparent',
+                  color: brand.sub,
+                  border: 'none',
+                  outline: 'none',
+                  fontWeight: 700,
+                }}
+              >
+                <option value="">Select period</option>
+                <option value="last_30">Last 30 days</option>
+                <option value="last_quarter">Last quarter</option>
+                <option value="ytd">Year to date</option>
+              </select>
+              <span style={{ color: brand.sub, fontSize: 12, marginLeft: 8 }}>▾</span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Focus Topics</div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                border: `1px solid ${brand.border}`,
+                borderRadius: 12,
+                padding: '0 10px',
+                background: '#0f1115',
+              }}
+            >
+              <select
+                value={topics}
+                onChange={(e) => setTopics(e.target.value)}
+                style={{
+                  appearance: 'none',
+                  width: '100%',
+                  padding: '12px 8px',
+                  background: 'transparent',
+                  color: brand.sub,
+                  border: 'none',
+                  outline: 'none',
+                  fontWeight: 700,
+                }}
+              >
+                <option value="">Select topics</option>
+                <option value="growth">Growth & revenue</option>
+                <option value="sustainability">Sustainability</option>
+                <option value="engagement">Community engagement</option>
+              </select>
+              <span style={{ color: brand.sub, fontSize: 12, marginLeft: 8 }}>▾</span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 900, marginBottom: 6 }}>Output Format</div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                border: `1px solid ${brand.border}`,
+                borderRadius: 12,
+                padding: '0 10px',
+                background: '#0f1115',
+              }}
+            >
+              <select
+                value={format}
+                onChange={(e) => setFormat(e.target.value)}
+                style={{
+                  appearance: 'none',
+                  width: '100%',
+                  padding: '12px 8px',
+                  background: 'transparent',
+                  color: brand.sub,
+                  border: 'none',
+                  outline: 'none',
+                  fontWeight: 700,
+                }}
+              >
+                <option value="">Select format</option>
+                <option value="pdf">PDF</option>
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+              </select>
+              <span style={{ color: brand.sub, fontSize: 12, marginLeft: 8 }}>▾</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 2: Visual Elements / Context checkboxes */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              border: `1px solid ${brand.border}`,
+              borderRadius: 12,
+              padding: '12px',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: 18 }}>🖼️</span>
+            <input
+              type="checkbox"
+              checked={includeVisuals}
+              onChange={(e) => setIncludeVisuals(e.target.checked)}
+              style={{ width: 18, height: 18 }}
+            />
+            <div style={{ fontWeight: 800 }}>Include charts, graphs, and visual analytics</div>
+          </label>
+
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              border: `1px solid ${brand.border}`,
+              borderRadius: 12,
+              padding: '12px',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: 18 }}>💬</span>
+            <input
+              type="checkbox"
+              checked={includeContext}
+              onChange={(e) => setIncludeContext(e.target.checked)}
+              style={{ width: 18, height: 18 }}
+            />
+            <div style={{ fontWeight: 800 }}>Add contextual questions and AI insights</div>
+          </label>
+        </div>
+
+        {/* Row 3: Custom requirements text area */}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Custom Requirements</div>
+          <textarea
+            value={requirements}
+            onChange={(e) => setRequirements(e.target.value)}
+            rows={6}
+            placeholder="Describe any specific requirements, focus areas, or questions you'd like the report to address..."
+            style={{
+              width: '100%',
+              resize: 'vertical',
+              border: `1px solid ${brand.border}`,
+              borderRadius: 12,
+              padding: 12,
+              background: '#0f1115',
+              color: brand.text,
+            }}
+          />
+        </div>
+
+        {/* Row 4: Report title input */}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Report Title</div>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Enter a custom title for your report"
+            style={{
+              width: '100%',
+              border: `1px solid ${brand.border}`,
+              borderRadius: 12,
+              padding: 12,
+              background: '#0f1115',
+              color: brand.text,
+              fontWeight: 700,
+            }}
+          />
+        </div>
+
+        {/* Footer: estimated time + actions */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto',
+            alignItems: 'center',
+            gap: 12,
+            marginTop: 16,
+          }}
+        >
+          <div style={{ color: brand.sub }}>Estimated generation time: 2–5 minutes</div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Button variant="outline" onClick={() => showSoon('Template saving will be added later.')}>
+              Save as Template
+            </Button>
+            <Button onClick={() => showSoon('Generate logic will be implemented on the logic branch.')}>
+              Generate Report
+            </Button>
+          </div>
+        </div>
       </Card>
 
       {/* Suggested Updates */}
@@ -323,90 +534,6 @@ export default function GeneratePage() {
             </div>
           </div>
         ))}
-      </Card>
-
-      {/* Builder (visual-only shell) */}
-      <SectionTitle icon={<span>⚙️</span>}>Report Builder</SectionTitle>
-      <Card>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <div>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Report Type</div>
-            <div style={{ border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, color: brand.sub }}>
-              Select report type
-            </div>
-          </div>
-          <div>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Time Period</div>
-            <div style={{ border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, color: brand.sub }}>
-              Select period
-            </div>
-          </div>
-          <div>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Focus Topics</div>
-            <div style={{ border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, color: brand.sub }}>
-              Select topics
-            </div>
-          </div>
-          <div>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Output Format</div>
-            <div style={{ border: `1px solid ${brand.border}`, borderRadius: 12, padding: 12, color: brand.sub }}>
-              Select format
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <div>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Visual Elements</div>
-            <div
-              style={{
-                border: `1px solid ${brand.border}`,
-                borderRadius: 12,
-                padding: 12,
-                color: brand.sub,
-              }}
-            >
-              Include charts, graphs, and visual analytics
-            </div>
-          </div>
-          <div>
-            <div style={{ fontWeight: 900, marginBottom: 6 }}>Context &amp; Insights</div>
-            <div
-              style={{
-                border: `1px solid ${brand.border}`,
-                borderRadius: 12,
-                padding: 12,
-                color: brand.sub,
-              }}
-            >
-              Add contextual questions and AI insights
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>Custom Requirements</div>
-          <div
-            style={{
-              border: `1px solid ${brand.border}`,
-              borderRadius: 12,
-              padding: 12,
-              color: brand.sub,
-              minHeight: 90,
-            }}
-          >
-            Describe any specific requirements, focus areas, or questions you'd like the report to address…
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-          <Button variant="outline" onClick={() => showSoon('Template saving will be added later.')}>
-            Save as Template
-          </Button>
-          <Button onClick={() => showSoon('Generate logic will be implemented on the logic branch.')}>
-            Generate Report
-          </Button>
-        </div>
       </Card>
 
       {/* tiny toast */}
