@@ -3,9 +3,19 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../../components/Toast';
-import { getBusinessId, findAnyAccessToken, readSupabaseTokens, fetchWithAuth, clearLocalAuthForGenerate } from './auth-helpers';
-import { fetchCredits, writeCreditsEverywhere } from './credits';
+import { apiFetch, getToken } from '../../components/api'; // <-- use your existing API helper
 import { COST_PER_REPORT } from './reports-registry';
+
+type GenerateOk = {
+  success?: boolean;
+  report_id?: string;
+  remaining_ai_credits?: number;
+  ai_credits?: { remaining?: number };
+  data?: { report_id?: string; ai_credits?: { remaining?: number } };
+  detail?: { ok?: boolean; code?: string; message?: string };
+};
+
+const getBusinessId = () => process.env.NEXT_PUBLIC_BUSINESS_ID ?? null;
 
 export function useGenerateReport() {
   const router = useRouter();
@@ -13,22 +23,27 @@ export function useGenerateReport() {
 
   const [loadingId, setLoadingId] = React.useState<string | null>(null);
   const [credits, setCredits] = React.useState<number | null>(null);
+  const [lastReportId, setLastReportId] = React.useState<string | null>(null);
   const businessId = React.useMemo(getBusinessId, []);
+  const notEnoughCredits = credits !== null && credits < COST_PER_REPORT;
 
   React.useEffect(() => {
-    const token = findAnyAccessToken() || readSupabaseTokens()?.accessToken || null;
-    fetchCredits(token).then((v) => {
-      if (v !== null) {
-        setCredits(v);
-        writeCreditsEverywhere(v);
-      } else {
-        const raw = localStorage.getItem('ai_credits');
-        if (raw && !Number.isNaN(Number(raw))) setCredits(Number(raw));
+    (async () => {
+      const res = await safeApi('/api/ai-credits', { method: 'GET' });
+      if (res?.ok) {
+        const j = await res.json();
+        const r =
+          j?.remaining ?? j?.ai_credits?.remaining ?? j?.credits?.remaining;
+        if (typeof r === 'number') {
+          setCredits(r);
+          persistCredits(r);
+          return;
+        }
       }
-    });
+      const cached = Number(localStorage.getItem('ai_credits') || NaN);
+      if (!Number.isNaN(cached)) setCredits(cached);
+    })();
   }, []);
-
-  const notEnoughCredits = credits !== null && credits < COST_PER_REPORT;
 
   async function runBusinessOverview(extra?: { template?: any; custom?: any }) {
     if (!businessId) {
@@ -36,50 +51,59 @@ export function useGenerateReport() {
       return;
     }
     if (notEnoughCredits) {
-      push({ title: 'Not enough AI credits', description: 'Upgrade or add credits to continue.', tone: 'error' });
+      push({ title: 'Not enough credits', description: 'Upgrade or add credits to continue.', tone: 'error' });
       return;
     }
 
     setLoadingId('business_overview');
     try {
-      const res = await fetchWithAuth('/api/reports/generate-business-overview', {
+      const body = JSON.stringify({ business_id: businessId, ...(extra || {}) });
+      const res = await safeApi('/api/reports/generate-business-overview', {
         method: 'POST',
-        body: JSON.stringify({ business_id: businessId, ...(extra || {}) }),
+        headers: { 'Content-Type': 'application/json' },
+        body,
       });
 
+      if (!res) throw new Error('Network error. Are rewrites set for /api → backend?');
       if (res.status === 401) {
-        clearLocalAuthForGenerate();
         push({ title: 'Session expired', description: 'Please sign in again.', tone: 'error' });
         setTimeout(() => router.push('/login'), 400);
         return;
       }
-
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(txt || 'Generation failed');
       }
 
-      const data: any = await res.json();
+      const data = (await res.json()) as GenerateOk;
+      const newId = data?.report_id || data?.data?.report_id || null;
+      setLastReportId(newId);
 
-      // Try to refresh credits from API; fall back to optimistic
-      const token = findAnyAccessToken() || readSupabaseTokens()?.accessToken || null;
-      const fresh = await fetchCredits(token);
-      if (fresh !== null) {
-        setCredits(fresh);
-        writeCreditsEverywhere(fresh);
+      // refresh credits (best-effort)
+      const cRes = await safeApi('/api/ai-credits', { method: 'GET' });
+      if (cRes?.ok) {
+        const cj = await cRes.json();
+        const r =
+          cj?.remaining ?? cj?.ai_credits?.remaining ?? cj?.credits?.remaining;
+        if (typeof r === 'number') {
+          setCredits(r);
+          persistCredits(r);
+        }
       } else if (typeof data?.remaining_ai_credits === 'number') {
         setCredits(data.remaining_ai_credits);
-        writeCreditsEverywhere(data.remaining_ai_credits);
+        persistCredits(data.remaining_ai_credits);
+      } else if (typeof data?.ai_credits?.remaining === 'number') {
+        setCredits(data.ai_credits.remaining);
+        persistCredits(data.ai_credits.remaining);
       } else if (credits !== null) {
         const optimistic = Math.max(0, credits - 1);
         setCredits(optimistic);
-        writeCreditsEverywhere(optimistic);
+        persistCredits(optimistic);
       }
 
       push({ title: 'Business Overview generated', description: 'Opening My Reports…' });
-      const newReportId = data?.report_id || data?.data?.report_id;
       setTimeout(() => {
-        if (newReportId) router.push(`/my-reports?new=${encodeURIComponent(newReportId)}`);
+        if (newId) router.push(`/my-reports?new=${encodeURIComponent(newId)}`);
         else router.push('/my-reports');
       }, 800);
     } catch (e: any) {
@@ -89,5 +113,33 @@ export function useGenerateReport() {
     }
   }
 
-  return { loadingId, credits, businessId, notEnoughCredits, runBusinessOverview };
+  return { loadingId, credits, businessId, notEnoughCredits, lastReportId, runBusinessOverview };
+}
+
+/* ---------- helpers ---------- */
+
+function persistCredits(n: number) {
+  try {
+    localStorage.setItem('ai_credits', String(n));
+    window.dispatchEvent(new Event('ai:credits')); // Sidebar listens to this
+  } catch {}
+}
+
+/** Uses your apiFetch; gracefully handles absence of token. */
+async function safeApi(path: string, init?: RequestInit) {
+  try {
+    const token = getToken?.();
+    const headers = {
+      ...(init?.headers as Record<string, string>),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    return await apiFetch(path, { ...init, headers });
+  } catch {
+    // Fallback to plain fetch if apiFetch throws (shouldn’t normally)
+    try {
+      return await fetch(path, init);
+    } catch {
+      return null;
+    }
+  }
 }

@@ -10,10 +10,11 @@ import { useToast } from '../../components/Toast';
 const colors = { bg: '#0f1115', card: '#141821', border: '#252a34', text: '#e9eaf0', sub: '#a7adbb', brand: '#9b7bd1' };
 
 export default function GenerateClient() {
-  const { loadingId, credits, businessId, notEnoughCredits, runBusinessOverview } = useGenerateReport();
+  const { loadingId, credits, businessId, notEnoughCredits, lastReportId, runBusinessOverview } = useGenerateReport();
   const { push } = useToast();
 
   const [preview, setPreview] = React.useState<{ open: boolean; embed?: string; view?: string; title?: string }>({ open: false });
+  const [showDebug, setShowDebug] = React.useState(false);
 
   return (
     <div style={styles.page}>
@@ -42,7 +43,7 @@ export default function GenerateClient() {
 
           const onGenerate = () => {
             if (def.id === 'business_overview') return runBusinessOverview({ template: def.template });
-            push({ title: `${def.title}`, description: 'This report is coming soon.', tone: 'default' });
+            push({ title: `${def.title}`, description: 'This report is coming soon.' });
           };
 
           return (
@@ -81,6 +82,21 @@ export default function GenerateClient() {
         </div>
       </div>
 
+      {/* Debug toggle */}
+      <div style={{ marginTop: 12 }}>
+        <button style={{ ...styles.button, ...styles.secondaryBtn }} onClick={() => setShowDebug((s) => !s)}>
+          {showDebug ? 'Hide' : 'Show'} Debug
+        </button>
+      </div>
+      {showDebug && (
+        <div style={{ ...styles.panel, marginTop: 8, fontSize: 13 }}>
+          <div>Business ID: <code>{businessId ?? 'not-set'}</code></div>
+          <div>Credits: {credits ?? '—'}</div>
+          <div>Loading: {String(!!loadingId)}</div>
+          <div>Last Report ID: {lastReportId ?? '—'}</div>
+        </div>
+      )}
+
       {preview.open && (
         <TemplateModal
           open={preview.open}
@@ -104,4 +120,6 @@ const styles: Record<string, React.CSSProperties> = {
   sectionTitle: { fontSize: 16, fontWeight: 700 },
   cardGrid3: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 16 },
   panel: { border: `1px solid ${colors.border}`, borderRadius: 16, background: colors.card, padding: 16, boxShadow: '0 10px 18px rgba(0,0,0,0.25)' },
+  button: { appearance: 'none', border: '1px solid transparent', borderRadius: 10, padding: '10px 14px', fontWeight: 800, fontSize: 14, cursor: 'pointer' },
+  secondaryBtn: { background: '#0f131a', color: colors.text, borderColor: '#252a34' },
 };
