@@ -2,8 +2,7 @@
 
 import { ReportsList } from "../../components/reports/ReportsList";`r`nimport React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '../../components/api';
-import { getToken, getBusinessId } from '../../components/auth';
+import { apiFetch } from '../../lib/api';
 
 type ReportStatus = 'pending' | 'processing' | 'ready' | 'failed';
 type Report = {
@@ -1016,5 +1015,6 @@ function DashboardContent() {
     </>
   );
 }
+
 
 
