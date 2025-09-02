@@ -1,67 +1,48 @@
-﻿export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
+﻿/** Lightweight client helpers (no path aliases). */
+
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
   return (
-    localStorage.getItem('auth_token') ||
-    localStorage.getItem('access_token') ||
-    localStorage.getItem('sb_access_token') ||
-    localStorage.getItem('enrich_token') ||
+    localStorage.getItem("auth_token") ||
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("sb_access_token") ||
+    localStorage.getItem("enrich_token") ||
     null
   );
 }
 
 export function authHeaders(extra?: HeadersInit): HeadersInit {
   const token = getToken();
-  const base: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) base['Authorization'] = `Bearer ${token}`;
-  if (extra) {
-    const obj: Record<string, string> = { ...base };
-    if (extra instanceof Headers) {
-      extra.forEach((v, k) => (obj[k] = v));
-    } else if (Array.isArray(extra)) {
-      for (const [k, v] of extra) obj[k] = String(v);
-    } else {
-      Object.assign(obj, extra as Record<string, string>);
-    }
-    return obj;
+  const base: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) base["Authorization"] = `Bearer ${token}`;
+
+  if (!extra) return base;
+
+  const out: Record<string, string> = { ...base };
+  if (extra instanceof Headers) {
+    extra.forEach((v, k) => (out[k] = v));
+  } else if (Array.isArray(extra)) {
+    for (const [k, v] of extra) out[k] = String(v);
+  } else {
+    Object.assign(out, extra as Record<string, string>);
   }
-  return base;
+  return out;
 }
 
-export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-  const path = input.startsWith('/api') ? input : `/api${input.startsWith('/') ? input : `/${input}`}`;
-  const headers = authHeaders(init?.headers as HeadersInit | undefined);
-  return fetch(path, { ...init, headers, cache: 'no-store' });
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const url = path.startsWith("/api") ? path : `/api${path.startsWith("/") ? path : `/${path}`}`;
+  return fetch(url, { ...init, headers: authHeaders(init?.headers as any), cache: "no-store" });
 }
 
-export type MeResponse = {
-  ok?: boolean;
-  profile?: {
-    id?: string;
-    business_id?: string;
-    businessId?: string;
-    business?: { id?: string };
-    business_name?: string;
-    email?: string;
-  };
-};
-
-export async function fetchMe(): Promise<MeResponse | null> {
-  try {
-    const r = await apiFetch('/auth/me');
-    if (!r.ok) return null;
-    return (await r.json()) as MeResponse;
-  } catch {
-    return null;
-  }
-}
-
-export function extractBusinessId(me: MeResponse | null): string | null {
-  const p = me?.profile;
-  return (
-    p?.business_id ||
-    p?.id ||
-    p?.businessId ||
-    p?.business?.id ||
-    null
-  );
+/** Shared download helper for JSON/CSV/etc. */
+export function downloadBlob(filename: string, content: Blob | string, type = "text/plain") {
+  const blob = content instanceof Blob ? content : new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
