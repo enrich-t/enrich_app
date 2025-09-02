@@ -1,4 +1,28 @@
-﻿// lib/api.ts
+﻿/* lib/api.ts */
+function findAccessToken(): string | null {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || "";
+      if (k.startsWith("sb-") && k.endsWith("-auth-token")) {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        try {
+          const obj = JSON.parse(raw);
+          const s = obj?.currentSession || obj?.session || obj;
+          const t = s?.access_token || s?.accessToken || obj?.access_token;
+          if (typeof t === "string" && t.length > 10) return t;
+        } catch {}
+      }
+    }
+    const fallbacks = ["access_token", "auth_token", "token", "ENRICH_TOKEN"];
+    for (const k of fallbacks) {
+      const t = localStorage.getItem(k);
+      if (t && t.length > 10) return t;
+    }
+  } catch {}
+  return null;
+}
+
 export async function apiFetch(
   path: string,
   init: RequestInit = {}
@@ -9,33 +33,29 @@ export async function apiFetch(
     ...(init.headers as Record<string, string>),
   };
 
-  // Default JSON for non-GET if no body provided
-  const hasBody = typeof init.body !== "undefined";
+  if (!headers["Authorization"]) {
+    const token = typeof window !== "undefined" ? findAccessToken() : null;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const method = (init.method || "GET").toUpperCase();
-  if (method !== "GET" && !hasBody) {
+  const hasBody = typeof init.body !== "undefined";
+  if (method !== "GET" && !hasBody && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
   const res = await fetch(url, {
     ...init,
     headers,
-    // include cookies for /api/auth/me & any session backed flows
     credentials: "include",
     cache: "no-store",
   });
 
   const ct = res.headers.get("content-type") || "";
   let payload: any = undefined;
-
   try {
-    if (ct.includes("application/json")) {
-      payload = await res.json();
-    } else {
-      payload = await res.text();
-    }
-  } catch {
-    // ignore parse errors; payload stays undefined
-  }
+    payload = ct.includes("application/json") ? await res.json() : await res.text();
+  } catch {}
 
   if (!res.ok) {
     return {
