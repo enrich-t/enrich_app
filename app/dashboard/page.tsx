@@ -94,7 +94,7 @@ async function fetchReports(businessId: string, signal?: AbortSignal): Promise<R
     cache: 'no-store',
   });
   const raw = await (res as any).text();
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${raw}`);
+  if (!res.ok) throw new Error(`${res.status}: ${raw}`);
   let json: any = [];
   try { json = JSON.parse(raw); } catch {}
   return normalizeReports(json);
@@ -901,7 +901,7 @@ function DashboardContent() {
       });
       const txt = await (res as any).text();
       if (!res.ok) {
-        alert(`Generate failed: ${res.status} ${res.statusText}\n${txt.slice(0, 300)}`);
+        alert(`Generate failed: ${res.status} ${res.status}\n${txt.slice(0, 300)}`);
         return;
       }
       await onRefresh();
@@ -957,11 +957,11 @@ function DashboardContent() {
           [
             `Token present: ${!!getToken()} (len=${getToken()?.length || 0})`,
             `Business ID: ${biz}`,
-            `GET /api/auth/me -> ${me.status} ${me.statusText}`,
+            `GET /api/auth/me -> ${me.status} ${me.status}`,
             (meTxt || '').slice(0, 220),
-            `GET /api/reports/list/${biz} -> ${list.status} ${list.statusText}`,
+            `GET /api/reports/list/${biz} -> ${list.status} ${list.status}`,
             (listTxt || '').slice(0, 220),
-            `POST /api/reports/generate-business-overview -> ${gen.status} ${gen.statusText}`,
+            `POST /api/reports/generate-business-overview -> ${gen.status} ${gen.status}`,
             (genTxt || '').slice(0, 220),
           ].join('\n')
         );
@@ -1016,6 +1016,7 @@ function DashboardContent() {
     </>
   );
 }
+
 
 
 
