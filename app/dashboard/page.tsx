@@ -899,7 +899,7 @@ function DashboardContent() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      const txt = await res as any).text();
+      const txt = await (res as any).text();
       if (!res.ok) {
         alert(`Generate failed: ${res.status} ${res.statusText}\n${txt.slice(0, 300)}`);
         return;
@@ -1016,6 +1016,7 @@ function DashboardContent() {
     </>
   );
 }
+
 
 
 
