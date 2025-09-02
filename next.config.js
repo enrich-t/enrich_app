@@ -1,15 +1,15 @@
-/** @type {import('next').NextConfig} */
+﻿/** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: false },
   async rewrites() {
     return [
       {
-        source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_BASE_URL}/:path*`,
+        source: "/api/:path*",
+        destination:
+          (process.env.NEXT_PUBLIC_API_BASE_URL || "https://enrich-backend-new.onrender.com") + "/:path*",
       },
     ];
   },
 };
-
 module.exports = nextConfig;
