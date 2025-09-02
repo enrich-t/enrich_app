@@ -1,6 +1,7 @@
 ﻿'use client';
 
-import { ReportsList } from "../../components/reports/ReportsList";`r`nimport React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ReportsList } from "../../components/reports/ReportsList";
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api';
 
@@ -1015,6 +1016,7 @@ function DashboardContent() {
     </>
   );
 }
+
 
 
 
