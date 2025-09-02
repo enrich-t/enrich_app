@@ -93,7 +93,7 @@ async function fetchReports(businessId: string, signal?: AbortSignal): Promise<R
     signal,
     cache: 'no-store',
   });
-  const raw = await res.text();
+  const raw = await (res as any).text();
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${raw}`);
   let json: any = [];
   try { json = JSON.parse(raw); } catch {}
@@ -105,11 +105,11 @@ async function fetchReportContent(r: Report): Promise<any | null> {
   try {
     if (r.json_url) {
       const res = await apiFetch(r.json_url, {}, { noAuthRedirect: true }); // may be public
-      const txt = await res.text();
+      const txt = await (res as any).text();
       return res.ok ? JSON.parse(txt) : null;
     } else {
       const res = await apiFetch(`/api/reports/${encodeURIComponent(r.id)}`);
-      const txt = await res.text();
+      const txt = await (res as any).text();
       if (!res.ok) return null;
       const data = JSON.parse(txt);
       return data?.report?.content ?? null;
@@ -1016,6 +1016,7 @@ function DashboardContent() {
     </>
   );
 }
+
 
 
 
