@@ -1,6 +1,23 @@
 ﻿'use client';
 
-import { ReportsList as ReportsFeed } from "../../components/reports/ReportsList";
+import { ReportsList as ReportsFeed } from "../../components/reports/ReportsList";
+//
+// Auth guard (no getToken): call /api/auth/me; on failure, redirect to /login
+useEffect(() => {
+  let alive = true;
+  (async () => {
+    try {
+      const me = await apiFetch('/api/auth/me', { cache: 'no-store' } as any);
+      const ok = me?.ok && (me.json?.ok !== false);
+      if (!alive) return;
+      if (!ok) router.replace('/login');
+    } catch {
+      if (alive) router.replace('/login');
+    }
+  })();
+  return () => { alive = false; };
+}, [router]);
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api';
@@ -1016,6 +1033,7 @@ function DashboardContent() {
     </>
   );
 }
+
 
 
 
