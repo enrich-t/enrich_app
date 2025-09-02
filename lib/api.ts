@@ -1,43 +1,60 @@
-﻿/** Lightweight client helpers (no path aliases). */
+﻿// lib/api.ts
+export async function apiFetch(
+  path: string,
+  init: RequestInit = {}
+): Promise<{ ok: boolean; status: number; json?: any; text?: string }> {
+  const url = path.startsWith("http") ? path : path.startsWith("/") ? path : `/${path}`;
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return (
-    localStorage.getItem("auth_token") ||
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("sb_access_token") ||
-    localStorage.getItem("enrich_token") ||
-    null
-  );
-}
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string>),
+  };
 
-export function authHeaders(extra?: HeadersInit): HeadersInit {
-  const token = getToken();
-  const base: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) base["Authorization"] = `Bearer ${token}`;
-
-  if (!extra) return base;
-
-  const out: Record<string, string> = { ...base };
-  if (extra instanceof Headers) {
-    extra.forEach((v, k) => (out[k] = v));
-  } else if (Array.isArray(extra)) {
-    for (const [k, v] of extra) out[k] = String(v);
-  } else {
-    Object.assign(out, extra as Record<string, string>);
+  // Default JSON for non-GET if no body provided
+  const hasBody = typeof init.body !== "undefined";
+  const method = (init.method || "GET").toUpperCase();
+  if (method !== "GET" && !hasBody) {
+    headers["Content-Type"] = "application/json";
   }
-  return out;
+
+  const res = await fetch(url, {
+    ...init,
+    headers,
+    // include cookies for /api/auth/me & any session backed flows
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  const ct = res.headers.get("content-type") || "";
+  let payload: any = undefined;
+
+  try {
+    if (ct.includes("application/json")) {
+      payload = await res.json();
+    } else {
+      payload = await res.text();
+    }
+  } catch {
+    // ignore parse errors; payload stays undefined
+  }
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      status: res.status,
+      ...(typeof payload === "string" ? { text: payload } : { json: payload }),
+    };
+  }
+
+  return {
+    ok: true,
+    status: res.status,
+    ...(typeof payload === "string" ? { text: payload } : { json: payload }),
+  };
 }
 
-export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const url = path.startsWith("/api") ? path : `/api${path.startsWith("/") ? path : `/${path}`}`;
-  return fetch(url, { ...init, headers: authHeaders(init?.headers as any), cache: "no-store" });
-}
-
-/** Shared download helper for JSON/CSV/etc. */
-export function downloadBlob(filename: string, content: Blob | string, type = "text/plain") {
-  const blob = content instanceof Blob ? content : new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
+export function downloadBlob(filename: string, blob: Blob, mime = "application/octet-stream") {
+  const b = new Blob([blob], { type: mime });
+  const url = URL.createObjectURL(b);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
