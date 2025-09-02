@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { ReportsList } from "../../components/reports/ReportsList";
+import { ReportsList as ReportsFeed } from "../../components/reports/ReportsList";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api';
@@ -987,7 +987,7 @@ function DashboardContent() {
       </div>
 
       <div style={{ marginTop: 18 }}>
-        <ReportsList reports={reports} onRefresh={onRefresh} onGenerate={onGenerate} onOpenPreview={onOpenPreview} />
+        <ReportsFeed reports={reports} onRefresh={onRefresh} onGenerate={onGenerate} onOpenPreview={onOpenPreview} />
       </div>
 
       <div style={{ marginTop: 18 }}>
@@ -1016,6 +1016,7 @@ function DashboardContent() {
     </>
   );
 }
+
 
 
 
