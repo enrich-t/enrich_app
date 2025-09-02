@@ -104,7 +104,7 @@ async function fetchReportContent(r: Report): Promise<any | null> {
   // Prefer the JSON url if available; else hit the backend by id to get content
   try {
     if (r.json_url) {
-      const res = await apiFetch(r.json_url, {}, { noAuthRedirect: true }); // may be public
+      const res = await fetch(r.json_url as string, { cache: "no-store" } as any); // may be public
       const txt = await (res as any).text();
       return res.ok ? JSON.parse(txt) : null;
     } else {
@@ -1016,6 +1016,7 @@ function DashboardContent() {
     </>
   );
 }
+
 
 
 
