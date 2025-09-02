@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ReportsList } from "../../components/reports/ReportsList";`r`nimport React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../../components/api';
 import { getToken, getBusinessId } from '../../components/auth';
@@ -263,7 +263,7 @@ function Dropdown({
         aria-haspopup="menu"
       >
         {button}
-        <span style={{ marginLeft: 6, opacity: 0.8 }}>▾</span>
+        <span style={{ marginLeft: 6, opacity: 0.8 }}>â–¾</span>
       </button>
       {open && (
         <div
@@ -434,7 +434,7 @@ function FacebookPreview({ content }: { content: any }) {
         </div>
         <div style={{ padding: 16, borderTop: `1px solid ${colors.border}`, display: 'flex', gap: 10 }}>
           <span style={{ background: colors.brand, color: '#fff', padding: '8px 12px', borderRadius: 10, fontWeight: 800 }}>Enrich</span>
-          <span style={{ color: colors.sub, fontSize: 14 }}>Generated report • {new Date().toLocaleDateString()}</span>
+          <span style={{ color: colors.sub, fontSize: 14 }}>Generated report â€¢ {new Date().toLocaleDateString()}</span>
         </div>
       </div>
     </div>
@@ -526,12 +526,12 @@ function GrowthStageCard({
   return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 18 }}>🌿</span>
+        <span style={{ fontSize: 18 }}>ðŸŒ¿</span>
         <h3 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Growth Stage</h3>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', marginTop: 12, gap: 8 }}>
-        <span style={{ fontSize: 24 }}>🌿</span>
+        <span style={{ fontSize: 24 }}>ðŸŒ¿</span>
         <div style={{ fontSize: 28, fontWeight: 800 }}>{stage}</div>
         <Badge tone="purple">Current Stage</Badge>
       </div>
@@ -558,11 +558,11 @@ function GrowthStageCard({
       <div style={{ marginTop: 20 }}>
         <div style={{ color: colors.text, fontWeight: 700, marginBottom: 10 }}>Growth Journey</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={journeyDot(false)}>🌱</div>
+          <div style={journeyDot(false)}>ðŸŒ±</div>
           <div style={{ height: 2, background: '#91a274', flex: 1 }} />
-          <div style={journeyDot(true)}>🌿</div>
+          <div style={journeyDot(true)}>ðŸŒ¿</div>
           <div style={{ height: 2, background: '#cfd3df', flex: 1 }} />
-          <div style={journeyDot(false)}>🌸</div>
+          <div style={journeyDot(false)}>ðŸŒ¸</div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', color: colors.sub, fontSize: 12, marginTop: 6 }}>
           <div>Initiated</div>
@@ -632,7 +632,7 @@ function TransparencyCard({ data }: { data: Breakdown }) {
     <Card>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 18 }}>🛡️</span>
+          <span style={{ fontSize: 18 }}>ðŸ›¡ï¸</span>
           <h3 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Transparency Score</h3>
         </div>
         <div style={{ display: 'inline-flex', gap: 8 }}>
@@ -713,7 +713,7 @@ function ReportsList({
     <Card>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 18 }}>📄</span>
+          <span style={{ fontSize: 18 }}>ðŸ“„</span>
           <h3 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Recent Reports</h3>
         </div>
         <div style={{ display: 'inline-flex', gap: 8 }}>
@@ -761,7 +761,7 @@ function ReportRow({ r, onOpenPreview }: { r: Report; onOpenPreview: (r: Report,
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Badge>Report</Badge>
-        <span style={{ color: colors.sub, fontSize: 14 }}>📅 {dt}</span>
+        <span style={{ color: colors.sub, fontSize: 14 }}>ðŸ“… {dt}</span>
         <span style={{ marginLeft: 'auto' }} />
       </div>
 
@@ -771,16 +771,16 @@ function ReportRow({ r, onOpenPreview }: { r: Report; onOpenPreview: (r: Report,
 
       <div style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
         <Dropdown button={<>Download</>}>
-          <MenuItem disabled={!hasPDF} onClick={() => download(r.pdf_url ?? r.export_link)}>⬇️ PDF</MenuItem>
-          <MenuItem disabled={!hasCSV} onClick={() => download(r.csv_url)}>📊 CSV</MenuItem>
-          <MenuItem disabled={!hasJSON} onClick={() => download(r.json_url)}>🧾 JSON</MenuItem>
+          <MenuItem disabled={!hasPDF} onClick={() => download(r.pdf_url ?? r.export_link)}>â¬‡ï¸ PDF</MenuItem>
+          <MenuItem disabled={!hasCSV} onClick={() => download(r.csv_url)}>ðŸ“Š CSV</MenuItem>
+          <MenuItem disabled={!hasJSON} onClick={() => download(r.json_url)}>ðŸ§¾ JSON</MenuItem>
         </Dropdown>
 
         <Dropdown button={<>View as</>}>
-          <MenuItem disabled={!hasPDF} onClick={() => onOpenPreview(r, 'pdf')}>🖨️ PDF</MenuItem>
-          <MenuItem onClick={() => onOpenPreview(r, 'facebook')}>📘 Facebook Post</MenuItem>
-          <MenuItem onClick={() => onOpenPreview(r, 'instagram')}>📸 Instagram Story</MenuItem>
-          <MenuItem onClick={() => onOpenPreview(r, 'linkedin')}>💼 LinkedIn Card</MenuItem>
+          <MenuItem disabled={!hasPDF} onClick={() => onOpenPreview(r, 'pdf')}>ðŸ–¨ï¸ PDF</MenuItem>
+          <MenuItem onClick={() => onOpenPreview(r, 'facebook')}>ðŸ“˜ Facebook Post</MenuItem>
+          <MenuItem onClick={() => onOpenPreview(r, 'instagram')}>ðŸ“¸ Instagram Story</MenuItem>
+          <MenuItem onClick={() => onOpenPreview(r, 'linkedin')}>ðŸ’¼ LinkedIn Card</MenuItem>
         </Dropdown>
       </div>
     </div>
@@ -978,7 +978,7 @@ function DashboardContent() {
     <>
       <div style={{ marginBottom: 14 }}>
         <H1>Welcome back, {profileName}</H1>
-        <Muted>Here’s what’s happening with your business today.</Muted>
+        <Muted>Hereâ€™s whatâ€™s happening with your business today.</Muted>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18, alignItems: 'start' }}>
@@ -1016,3 +1016,5 @@ function DashboardContent() {
     </>
   );
 }
+
+
