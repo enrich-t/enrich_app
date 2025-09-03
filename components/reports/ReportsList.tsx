@@ -1,240 +1,250 @@
 ﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../../lib/api";
 
-type ExportUrls = {
-  pdf?: string;
-  json?: string;
-  csv?: string;
-  [k: string]: string | undefined;
-};
-
-type ReportRow = {
+type ReportStatus = "pending" | "processing" | "generated" | "ready" | "failed";
+type Report = {
   id: string;
-  business_id: string;
-  report_type: string;
-  status?: "pending" | "ready" | "failed";
-  created_at?: string;
-  export_urls?: ExportUrls | null;
-  // optional other fields: content, meta, etc.
+  report_type: string; // e.g. "Business Overview" | "business_overview"
+  created_at: string;
+  status: ReportStatus;
+  csv_url: string | null;
+  json_url: string | null;
+  pdf_url: string | null;
+  export_link: string | null;
+  content?: any;
 };
 
-export function ReportsList({ limit }: { limit?: number }) {
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [rows, setRows] = useState<ReportRow[]>([]);
+type Props = {
+  businessId?: string;
+  limit?: number;
+  title?: string;
+  dense?: boolean; // smaller cards (for dashboard sidebar/section)
+};
 
-  async function load() {
-    setLoading(true);
-    setErr(null);
-    try {
-      // 1) get profile → business id
-      const me = await apiFetch("/api/auth/me");
-      if (!me.ok) throw new Error((me.json?.detail?.message || me.text || `auth ${me.status}`) as string);
-
-      const profile = me.json?.profile ?? {};
-      const biz =
-        profile.business_id ||
-        profile.id ||
-        profile.businessId ||
-        (profile.business && profile.business.id);
-
-      if (!biz) throw new Error("No business id found on profile.");
-
-      // 2) fetch reports list
-      const r = await apiFetch(`/api/reports/list/${encodeURIComponent(biz)}`);
-      if (!r.ok) throw new Error((r.json?.detail?.message || r.text || `list ${r.status}`) as string);
-
-      const all: ReportRow[] = r.json?.reports ?? [];
-      // newest first
-      all.sort((a, b) => {
-        const ta = a.created_at ? Date.parse(a.created_at) : 0;
-        const tb = b.created_at ? Date.parse(b.created_at) : 0;
-        return tb - ta;
-      });
-
-      setRows(limit ? all.slice(0, limit) : all);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load reports");
-    } finally {
-      setLoading(false);
-    }
+function first<T = any>(obj: any, keys: string[], coerce?: (x: any) => T): T | null {
+  for (const k of keys) {
+    if (obj && obj[k] != null) return coerce ? coerce(obj[k]) : obj[k];
   }
+  return null;
+}
+
+function normStatus(v: any): ReportStatus {
+  const s = String(v ?? "").toLowerCase();
+  if (["pending","processing","ready","failed","generated"].includes(s)) return s as ReportStatus;
+  return "ready";
+}
+
+function normalizeArray(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.reports)) return payload.reports;
+  return [];
+}
+
+function normalizeReports(payload: any): Report[] {
+  const arr = normalizeArray(payload);
+  return arr.map((r: any, i: number) => ({
+    id: first<string>(r, ["id","report_id"], (x)=>String(x)) ?? `tmp-${Date.now()}-${i}`,
+    report_type: first<string>(r, ["report_type","type","kind"], (x)=>String(x)) ?? "business_overview",
+    created_at: first<string>(r, ["created_at","createdAt","ts"], (x)=>String(x)) ?? new Date().toISOString(),
+    status: normStatus(first<string>(r, ["status","state","phase"], (x)=>String(x))),
+    csv_url: first<string>(r, ["csv_url","csv","csvUrl"], (x)=>String(x)),
+    json_url: first<string>(r, ["json_url","json","jsonUrl","export_link"], (x)=>String(x)),
+    pdf_url: first<string>(r, ["pdf_url","pdf","pdfUrl"], (x)=>String(x)),
+    export_link: first<string>(r, ["export_link","public_url"], (x)=>String(x)),
+    content: r?.content
+  }));
+}
+
+/** Small helper to call our backend via Next.js rewrite (/api -> backend) with auth token */
+async function apiFetch(path: string, init?: RequestInit) {
+  const base = path.startsWith("http") ? path : path;
+  const headers: Record<string,string> = { ...(init?.headers as any) };
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  if (token && !headers["Authorization"]) headers["Authorization"] = `Bearer ${token}`;
+  if (!headers["Content-Type"] && (init?.method && init.method !== "GET")) {
+    headers["Content-Type"] = "application/json";
+  }
+  const res = await fetch(base, { ...init, headers, cache: "no-store" });
+  const text = await res.text();
+  let json: any = null;
+  try { json = JSON.parse(text); } catch {}
+  return { ok: res.ok, status: res.status, json, text };
+}
+
+export function ReportsList({ businessId, limit, title = "Recent Reports", dense }: Props) {
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+
+  const resolvedBizId = useMemo(() => {
+    if (businessId && businessId.trim() !== "") return businessId;
+    if (typeof window !== "undefined") {
+      const localBiz = localStorage.getItem("business_id");
+      if (localBiz && localBiz !== "null") return localBiz;
+    }
+    const envBiz = (process.env.NEXT_PUBLIC_BUSINESS_ID || "").trim();
+    return envBiz;
+  }, [businessId]);
 
   useEffect(() => {
-    load();
-    // lightweight auto-refresh if this page stays open
-    const id = setInterval(load, 30_000);
-    return () => clearInterval(id);
-  }, []);
+    let alive = true;
+    (async () => {
+      if (!resolvedBizId) {
+        setError("No business_id found.");
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      const { ok, status, json, text } = await apiFetch(`/api/reports/list/${resolvedBizId}`);
+      if (!alive) return;
+      if (!ok) {
+        setError(`${status}: ${text?.slice?.(0,300) || "Failed to load"}`);
+      } else {
+        setReports(normalizeReports(json));
+      }
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [resolvedBizId]);
 
-  const body = useMemo(() => {
-    if (loading) return <div style={{ color: "#a7adbb" }}>Loading…</div>;
-    if (err) return <div style={{ color: "#e26d6d" }}>Error: {err}</div>;
-    if (!rows.length) return <div style={{ color: "#a7adbb" }}>No reports yet.</div>;
+  const items = useMemo(() => {
+    const sorted = [...reports].sort((a,b)=> (b.created_at||"").localeCompare(a.created_at||""));
+    return typeof limit === "number" ? sorted.slice(0, limit) : sorted;
+  }, [reports, limit]);
 
-    return (
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid #252a34" }}>
-              <Th>Type</Th>
-              <Th>Status</Th>
-              <Th>Created</Th>
-              <Th style={{ textAlign: "right" }}>Actions</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} style={{ borderBottom: "1px solid #1c222d" }}>
-                <Td>{labelForType(r.report_type)}</Td>
-                <Td>{badge(r.status || "ready")}</Td>
-                <Td>{fmtDate(r.created_at)}</Td>
-                <Td style={{ textAlign: "right" }}>
-                  {renderActions(r)}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }, [loading, err, rows, limit]);
+  const [preview, setPreview] = useState<Report | null>(null);
+  const [dlOpenIdx, setDlOpenIdx] = useState<string | null>(null);
 
-  return (
-    <div
-      style={{
-        background: "#141821",
-        border: "1px solid #252a34",
-        borderRadius: 14,
-        padding: 12,
-      }}
-    >
-      {body}
-    </div>
-  );
-}
+  const openDownload = (id: string) => setDlOpenIdx(prev => prev === id ? null : id);
+  const closeDownload = () => setDlOpenIdx(null);
 
-function Th(props: React.HTMLAttributes<HTMLTableCellElement>) {
-  return (
-    <th
-      {...props}
-      style={{
-        textAlign: "left",
-        padding: "10px 8px",
-        fontWeight: 800,
-        color: "#e9eaf0",
-        fontSize: 13,
-        ...(props.style || {}),
-      }}
-    />
-  );
-}
-function Td(props: React.HTMLAttributes<HTMLTableCellElement>) {
-  return (
-    <td
-      {...props}
-      style={{
-        padding: "10px 8px",
-        color: "#cfd3db",
-        fontSize: 13,
-        ...(props.style || {}),
-      }}
-    />
-  );
-}
-
-function labelForType(t: string) {
-  if (t === "business_overview") return "Business Overview";
-  if (t === "local_impact") return "Local Impact";
-  if (t === "energy_resources") return "Energy & Resources";
-  return t.replaceAll("_", " ");
-}
-
-function badge(status: "pending" | "ready" | "failed") {
-  const map: Record<typeof status, { bg: string; dot: string; text: string }> = {
-    pending: { bg: "rgba(229,197,100,.12)", dot: "#e5c564", text: "Pending" },
-    ready: { bg: "rgba(145,195,126,.12)", dot: "#91c37e", text: "Ready" },
-    failed: { bg: "rgba(228,96,103,.12)", dot: "#e46067", text: "Failed" },
-  };
-  const s = map[status] || map.ready;
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "6px 10px",
-        borderRadius: 999,
-        background: s.bg,
-        border: "1px solid #252a34",
-        fontWeight: 800,
-        color: "#e9eaf0",
-      }}
-    >
-      <span style={{ width: 8, height: 8, borderRadius: 999, background: s.dot }} />
-      {s.text}
-    </span>
-  );
-}
-
-function fmtDate(d?: string) {
-  if (!d) return "—";
-  try {
-    const dt = new Date(d);
-    return dt.toLocaleString();
-  } catch {
-    return d;
-  }
-}
-
-function renderActions(r: ReportRow) {
-  const hasAny =
-    !!r.export_urls?.pdf || !!r.export_urls?.json || !!r.export_urls?.csv;
-
-  if (!hasAny) {
-    return (
-      <div style={{ color: "#a7adbb", fontStyle: "italic" }}>
-        No exports available
-      </div>
-    );
-  }
-
-  const open = (url?: string) => {
+  const onDownload = (url: string | null) => {
     if (!url) return;
-    window.open(url, "_blank", "noreferrer");
+    // open in same tab for now; could stream as blob if needed
+    window.open(url, "_self");
   };
 
   return (
-    <div style={{ display: "inline-flex", gap: 8 }}>
-      {r.export_urls?.pdf && (
-        <button style={btn()} onClick={() => open(r.export_urls?.pdf!)}>
-          PDF
-        </button>
+    <div className="w-full">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold">{title}</h3>
+        {loading ? <span className="text-sm opacity-70">Loading…</span> : null}
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-red-300 bg-red-50 text-red-700 p-3 mb-4 text-sm">
+          {error}
+        </div>
       )}
-      {r.export_urls?.json && (
-        <button style={btn()} onClick={() => open(r.export_urls?.json!)}>
-          JSON
-        </button>
+
+      {items.length === 0 && !loading && !error && (
+        <div className="rounded-md border bg-muted/20 p-6 text-sm opacity-80">
+          No reports yet. Generate your first report to see it here.
+        </div>
       )}
-      {r.export_urls?.csv && (
-        <button style={btn()} onClick={() => open(r.export_urls?.csv!)}>
-          CSV
-        </button>
+
+      <div className={`grid ${dense ? "grid-cols-1 gap-3" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"}`}>
+        {items.map(r => {
+          const humanType = (r.report_type || "").replace(/_/g," ");
+          const dateStr = new Date(r.created_at).toLocaleString();
+          const hasAnyExport = !!(r.pdf_url || r.json_url || r.csv_url || r.export_link);
+          const id = r.id;
+
+          return (
+            <div key={id} className="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-sm uppercase tracking-wide opacity-70">{humanType}</div>
+                  <div className="font-medium mt-1">{r.content?.title ?? "Business Overview"}</div>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                  r.status === "failed" ? "border-red-300 text-red-700 bg-red-50"
+                  : r.status === "processing" || r.status === "pending" ? "border-amber-300 text-amber-700 bg-amber-50"
+                  : "border-emerald-300 text-emerald-700 bg-emerald-50"
+                }`}>
+                  {r.status}
+                </span>
+              </div>
+
+              <div className="text-xs opacity-70 mt-2">Created: {dateStr}</div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm"
+                  onClick={() => setPreview(r)}
+                >
+                  View
+                </button>
+
+                <div className="relative">
+                  <button
+                    className="px-3 py-1.5 rounded-lg border text-sm"
+                    onClick={() => openDownload(id)}
+                    aria-expanded={dlOpenIdx === id}
+                  >
+                    Download ▾
+                  </button>
+                  {dlOpenIdx === id && (
+                    <div
+                      className="absolute z-20 mt-1 w-44 rounded-lg border bg-popover text-popover-foreground shadow p-1"
+                      onMouseLeave={closeDownload}
+                    >
+                      <button
+                        disabled={!hasAnyExport}
+                        className="w-full text-left text-sm px-3 py-2 rounded hover:bg-accent disabled:opacity-50"
+                        onClick={() => onDownload(r.pdf_url)}
+                      >
+                        PDF
+                      </button>
+                      <button
+                        disabled={!hasAnyExport}
+                        className="w-full text-left text-sm px-3 py-2 rounded hover:bg-accent disabled:opacity-50"
+                        onClick={() => onDownload(r.json_url ?? r.export_link)}
+                      >
+                        JSON
+                      </button>
+                      <button
+                        disabled={!hasAnyExport}
+                        className="w-full text-left text-sm px-3 py-2 rounded hover:bg-accent disabled:opacity-50"
+                        onClick={() => onDownload(r.csv_url)}
+                      >
+                        CSV
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Lightweight modal for preview */}
+      {preview && (
+        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4" onClick={() => setPreview(null)}>
+          <div className="w-full max-w-3xl max-h-[85vh] overflow-auto rounded-xl bg-background border shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="font-semibold">{preview.content?.title ?? "Report"}</div>
+              <button className="text-sm opacity-70 hover:opacity-100" onClick={() => setPreview(null)}>Close</button>
+            </div>
+            <div className="p-4">
+              {preview.pdf_url ? (
+                <iframe src={preview.pdf_url} className="w-full h-[70vh] rounded-md border" />
+              ) : preview.json_url ? (
+                <iframe src={preview.json_url} className="w-full h-[70vh] rounded-md border" />
+              ) : preview.content ? (
+                <pre className="text-xs whitespace-pre-wrap leading-relaxed bg-muted/30 p-3 rounded-md border">
+                  {JSON.stringify(preview.content, null, 2)}
+                </pre>
+              ) : (
+                <div className="text-sm opacity-70">No preview available.</div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
-}
-
-function btn(): React.CSSProperties {
-  return {
-    background: "transparent",
-    color: "#e9eaf0",
-    border: "1px solid #252a34",
-    borderRadius: 10,
-    padding: "8px 12px",
-    fontWeight: 800,
-    cursor: "pointer",
-  };
 }
