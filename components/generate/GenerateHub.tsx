@@ -32,6 +32,25 @@ const SAMPLE_PREVIEW = {
 };
 import { generateBusinessOverview } from "../../features/reports/businessOverview";
 import { apiFetch } from "../../lib/api";
+/** Resolve active business id from env or /api/auth/me */
+async function resolveBusinessId(): Promise<string> {
+  const envId = typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === "string"
+    ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string)
+    : "";
+  if (envId) return envId;
+  try {
+    const me: any = await apiFetch("/api/auth/me", { cache: "no-store" } as any);
+    const json = me?.json ?? {};
+    return (
+      json?.profile?.business_id ||
+      json?.profile?.id ||
+      json?.business?.id ||
+      ""
+    );
+  } catch {
+    return "";
+  }
+}
 
 type Tile = {
   key: "business_overview" | "local_impact" | "energy_resources";
@@ -281,6 +300,7 @@ const res = await generateBusinessOverview(bizId);
     </div>
   );
 }
+
 
 
 
