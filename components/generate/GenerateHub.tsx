@@ -212,7 +212,9 @@ export function GenerateHub() {
         accent: "#9881b8", // brand primary
         onGenerate: async () => {
           // Real generate for the logged in business, store in DB, refresh list
-          const res = await generateBusinessOverview();
+          const bizId = await resolveBusinessId();
+if (!bizId) { alert("No business selected/found. Please log in again."); return; }
+const res = await generateBusinessOverview(bizId);
           if (!res.ok) {
             throw new Error("Download failed");
           }
@@ -279,6 +281,7 @@ export function GenerateHub() {
     </div>
   );
 }
+
 
 
 
