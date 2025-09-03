@@ -1,22 +1,36 @@
-﻿export type ApiInit = RequestInit & { noAuthRedirect?: boolean };
+﻿import { ENV, assertEnv } from "./env";
 
-export async function apiFetch(url: string, init: ApiInit = {}): Promise<Response> {
-  const base = process.env.NEXT_PUBLIC_BACKEND_URL || '';
-  // Accept absolute URLs or relative to /api (rewritten to backend by next.config.js)
-  const isAbs = /^https?:\/\//i.test(url);
-  const full = isAbs ? url : url.startsWith('/api') ? url : `/api${url.startsWith('/') ? '' : '/'}${url}`;
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
-  const headers = new Headers(init.headers || {});
-  // Attach token from browser storage (client side)
-  try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-    if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
-  } catch { /* SSR-safe */ }
+export async function api<T = unknown>(
+  path: string,
+  opts: { method?: HttpMethod; body?: any; authToken?: string } = {}
+): Promise<T> {
+  assertEnv();
+  const url = `${ENV.API_BASE.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
 
-  const res = await fetch(full, { ...init, headers, cache: init.cache ?? 'no-store' });
-  // Optional guard: if 401/403 and not explicitly suppressed, bounce to login
-  if (!res.ok && (res.status === 401 || res.status === 403) && !init.noAuthRedirect) {
-    if (typeof window !== 'undefined') window.location.replace('/login');
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (opts.authToken) headers.Authorization = `Bearer ${opts.authToken}`;
+
+  const res = await fetch(url, {
+    method: opts.method ?? "GET",
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    // Avoid caching surprises during generate
+    cache: "no-store",
+  });
+
+  let data: any = null;
+  try { data = await res.json(); } catch { /* ignore */ }
+
+  if (!res.ok) {
+    const msg = (data && (data.error || data.message)) || res.statusText;
+    throw new Error(`API ${res.status} ${url} → ${msg}`);
   }
-  return res;
+  return (data ?? {}) as T;
+}
+
+// Domain helpers
+export async function generateBusinessOverview(body: { business_id: string; report_type: string }, authToken?: string) {
+  return api("reports/generate-business-overview", { method: "POST", body, authToken });
 }
