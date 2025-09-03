@@ -1,85 +1,67 @@
-﻿/* lib/api.ts */
-function findAccessToken(): string | null {
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i) || "";
-      if (k.startsWith("sb-") && k.endsWith("-auth-token")) {
-        const raw = localStorage.getItem(k);
-        if (!raw) continue;
-        try {
-          const obj = JSON.parse(raw);
-          const s = obj?.currentSession || obj?.session || obj;
-          const t = s?.access_token || s?.accessToken || obj?.access_token;
-          if (typeof t === "string" && t.length > 10) return t;
-        } catch {}
-      }
-    }
-    const fallbacks = ["access_token", "auth_token", "token", "ENRICH_TOKEN"];
-    for (const k of fallbacks) {
-      const t = localStorage.getItem(k);
-      if (t && t.length > 10) return t;
-    }
-  } catch {}
-  return null;
+﻿export function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return (
+    localStorage.getItem('auth_token') ||
+    localStorage.getItem('access_token') ||
+    localStorage.getItem('sb_access_token') ||
+    localStorage.getItem('enrich_token') ||
+    null
+  );
 }
 
-export async function apiFetch(
-  path: string,
-  init: RequestInit = {}
-): Promise<{ ok: boolean; status: number; json?: any; text?: string }> {
-  const url = path.startsWith("http") ? path : path.startsWith("/") ? path : `/${path}`;
-
-  const headers: Record<string, string> = {
-    ...(init.headers as Record<string, string>),
-  };
-
-  if (!headers["Authorization"]) {
-    const token = typeof window !== "undefined" ? findAccessToken() : null;
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+export function authHeaders(extra?: HeadersInit): HeadersInit {
+  const token = getToken();
+  const base: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) base['Authorization'] = `Bearer ${token}`;
+  if (extra) {
+    const obj: Record<string, string> = { ...base };
+    if (extra instanceof Headers) {
+      extra.forEach((v, k) => (obj[k] = v));
+    } else if (Array.isArray(extra)) {
+      for (const [k, v] of extra) obj[k] = String(v);
+    } else {
+      Object.assign(obj, extra as Record<string, string>);
+    }
+    return obj;
   }
-
-  const method = (init.method || "GET").toUpperCase();
-  const hasBody = typeof init.body !== "undefined";
-  if (method !== "GET" && !hasBody && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  const res = await fetch(url, {
-    ...init,
-    headers,
-    credentials: "include",
-    cache: "no-store",
-  });
-
-  const ct = res.headers.get("content-type") || "";
-  let payload: any = undefined;
-  try {
-    payload = ct.includes("application/json") ? await res.json() : await res.text();
-  } catch {}
-
-  if (!res.ok) {
-    return {
-      ok: false,
-      status: res.status,
-      ...(typeof payload === "string" ? { text: payload } : { json: payload }),
-    };
-  }
-
-  return {
-    ok: true,
-    status: res.status,
-    ...(typeof payload === "string" ? { text: payload } : { json: payload }),
-  };
+  return base;
 }
 
-export function downloadBlob(filename: string, blob: Blob, mime = "application/octet-stream") {
-  const b = new Blob([blob], { type: mime });
-  const url = URL.createObjectURL(b);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const path = input.startsWith('/api') ? input : `/api${input.startsWith('/') ? input : `/${input}`}`;
+  const headers = authHeaders(init?.headers as HeadersInit | undefined);
+  return fetch(path, { ...init, headers, cache: 'no-store' });
+}
+
+export type MeResponse = {
+  ok?: boolean;
+  profile?: {
+    id?: string;
+    business_id?: string;
+    businessId?: string;
+    business?: { id?: string };
+    business_name?: string;
+    email?: string;
+  };
+};
+
+export async function fetchMe(): Promise<MeResponse | null> {
+  try {
+    const r = await apiFetch('/auth/me');
+    if (!r.ok) return null;
+    return (await r.json()) as MeResponse;
+  } catch {
+    return null;
+  }
+}
+
+export function extractBusinessId(me: MeResponse | null): string | null {
+  const p = me?.profile;
+  return (
+    p?.business_id ||
+    p?.id ||
+    p?.businessId ||
+    p?.business?.id ||
+    null
+  );
 }
