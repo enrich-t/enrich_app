@@ -237,7 +237,7 @@ try {
   await generateBusinessOverview(bizId);
 } catch (e: any) {
   console.error('Generate failed', e);
-  alert(Generate failed: );
+  alert(`Generate failed: ${e?.message ?? e}`);
   return;
 }
           // Optionally ping a “recent reports” revalidation endpoint if you have one
@@ -303,6 +303,7 @@ try {
     </div>
   );
 }
+
 
 
 
