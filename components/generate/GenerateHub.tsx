@@ -1,4 +1,17 @@
-﻿// components/generate/GenerateHub.tsx
+﻿// components/generate/GenerateHub.tsx  
+async function downloadBlob(url: string, filename?: string) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(\Download failed: \\);
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  const objectUrl = URL.createObjectURL(blob);
+  a.href = objectUrl;
+  a.download = filename || (url.split('/').pop() || 'download');
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -18,7 +31,7 @@ const SAMPLE_PREVIEW = {
   exports: { pdf: null, json: null, csv: null }
 };
 import { generateBusinessOverview } from "../../features/reports/businessOverview";
-import { apiFetch, downloadBlob } from "../../lib/api";
+import { apiFetch } from "../../lib/api";
 
 type Tile = {
   key: "business_overview" | "local_impact" | "energy_resources";
@@ -266,4 +279,6 @@ export function GenerateHub() {
     </div>
   );
 }
+
+
 
