@@ -2,7 +2,22 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { generateBusinessOverview, sampleBusinessOverviewPreview } from "../../features/reports/businessOverview";
+const SAMPLE_PREVIEW = {
+  title: "Business Overview (Sample)",
+  summary: "This is a sample preview to illustrate the layout before running a real generate.",
+  kpis: [
+    { label: "Revenue (est.)", value: "\.2M" },
+    { label: "Employees", value: "24" },
+    { label: "Locations", value: "3" }
+  ],
+  recommendations: [
+    "Increase social content frequency to 3x/week.",
+    "Pilot a referral program with 10% off for new customers.",
+    "Add sustainability stats to the About page for credibility."
+  ],
+  exports: { pdf: null, json: null, csv: null }
+};
+import { generateBusinessOverview } from "../../features/reports/businessOverview";
 import { apiFetch, downloadBlob } from "../../lib/api";
 
 type Tile = {
@@ -172,7 +187,7 @@ function ReportTile({
 export function GenerateHub() {
   // We’ll use the logged-in business id/token via our existing client helpers in lib/api.ts
   // generateBusinessOverview() already posts to /api/reports/generate-business-overview
-  // sampleBusinessOverviewPreview() returns a blob/pdf/json for quick preview.
+  // SAMPLE_PREVIEW() returns a blob/pdf/json for quick preview.
 
   const tiles: Tile[] = useMemo(() => {
     return [
@@ -194,7 +209,7 @@ export function GenerateHub() {
         },
         onPreview: async () => {
           // Preview is a general sample; show in-page (new tab avoided by creating an object URL)
-          const sample = await sampleBusinessOverviewPreview();
+          const sample = await SAMPLE_PREVIEW();
           if (!sample) throw new Error("No preview available");
           const url = URL.createObjectURL(sample.blob);
           // open a light viewer inside the page if you prefer.
@@ -251,3 +266,4 @@ export function GenerateHub() {
     </div>
   );
 }
+
