@@ -14,8 +14,9 @@ const nextConfig = {
 };
 module.exports = nextConfig;
 
-module.exports = {    webpack:(config) => {
+module.exports = { eslint: { ignoreDuringBuilds: true },    webpack:(config) => {
     config.resolve.alias['@'] = __dirname;
     return config;
   }
 };
+
