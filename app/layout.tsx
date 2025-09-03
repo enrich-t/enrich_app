@@ -1,6 +1,6 @@
-﻿import "./globals.css";
+import "./globals.css";
 import React from "react";
-import AppHeader from "@/components/AppHeader";
+import AppHeader from "../components/AppHeader";
 
 export const metadata = {
   title: "Enrich",
