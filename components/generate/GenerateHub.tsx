@@ -1,4 +1,6 @@
-﻿// components/generate/GenerateHub.tsx  
+﻿"use client";
+
+// components/generate/GenerateHub.tsx  
 async function downloadBlob(url: string, filename?: string) {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error("Download failed");
@@ -12,8 +14,6 @@ async function downloadBlob(url: string, filename?: string) {
   a.remove();
   URL.revokeObjectURL(objectUrl);
 }
-"use client";
-
 import React, { useMemo, useState } from "react";
 const SAMPLE_PREVIEW = {
   title: "Business Overview (Sample)",
@@ -279,6 +279,7 @@ export function GenerateHub() {
     </div>
   );
 }
+
 
 
 
