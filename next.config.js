@@ -14,4 +14,8 @@ const nextConfig = {
 };
 module.exports = nextConfig;
 
-module.exports = { experimental: { tsconfigPaths: true } }
+module.exports = {    webpack:(config) => {
+    config.resolve.alias['@'] = __dirname;
+    return config;
+  }
+};
