@@ -1,42 +1,21 @@
-'use client';
+﻿"use client";
 
-import React, { useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from "next/link";
+import React from "react";
 
 export default function AppHeader() {
-  const router = useRouter();
-  const onLogout = useCallback(() => {
-    router.replace('/login');
-  }, [router]);
-
   return (
-    <header style={styles.header}>
-      <div style={{ fontWeight: 700 }}>Enrich</div>
-      <button onClick={onLogout} style={styles.btn} aria-label="Log out">
-        Log out
-      </button>
+    <header className="sticky top-0 z-50 border-b bg-white/70 backdrop-blur">
+      <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
+        <Link href="/" className="font-semibold tracking-tight">
+          Enrich
+        </Link>
+        <nav className="flex items-center gap-4 text-sm">
+          <Link href="/reports" className="hover:underline">My Reports</Link>
+          <Link href="/generate" className="hover:underline">Generate</Link>
+          <Link href="/settings" className="hover:underline">Settings</Link>
+        </nav>
+      </div>
     </header>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 24px',
-    borderBottom: '1px solid #222',
-    background: 'var(--nav-bg, #0c0d0e)',
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
-  },
-  btn: {
-    padding: '8px 12px',
-    borderRadius: 8,
-    border: '1px solid #333',
-    background: 'transparent',
-    color: 'inherit',
-    cursor: 'pointer',
-  },
-};

@@ -1,22 +1,18 @@
-import './globals.css';
-import type { Metadata } from 'next';
-import Shell from '../components/Shell';
+﻿import "./globals.css";
+import React from "react";
+import AppHeader from "@/components/AppHeader";
 
-export const metadata: Metadata = {
-  title: 'Enrich',
-  description: 'Responsible operations dashboard',
+export const metadata = {
+  title: "Enrich",
+  description: "Responsible operations reporting",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0 }}>
-        {/* Shell renders the global sidebar on all pages except /login */}
-        <Shell>{children}</Shell>
+      <body className="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900">
+        <AppHeader />
+        <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
       </body>
     </html>
   );
