@@ -1,7 +1,7 @@
 ﻿// components/generate/GenerateHub.tsx  
 async function downloadBlob(url: string, filename?: string) {
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(\Download failed: \\);
+  if (!res.ok) throw new Error("Download failed");
   const blob = await res.blob();
   const a = document.createElement('a');
   const objectUrl = URL.createObjectURL(blob);
@@ -214,7 +214,7 @@ export function GenerateHub() {
           // Real generate for the logged in business, store in DB, refresh list
           const res = await generateBusinessOverview();
           if (!res.ok) {
-            throw new Error(res.message || "Failed to generate");
+            throw new Error("Download failed");
           }
           // Optionally ping a “recent reports” revalidation endpoint if you have one
           // await apiFetch('/api/reports/revalidate', { method: 'POST' });
@@ -223,7 +223,7 @@ export function GenerateHub() {
         onPreview: async () => {
           // Preview is a general sample; show in-page (new tab avoided by creating an object URL)
           const sample = await SAMPLE_PREVIEW();
-          if (!sample) throw new Error("No preview available");
+          if (!sample) throw new Error("Download failed");
           const url = URL.createObjectURL(sample.blob);
           // open a light viewer inside the page if you prefer.
           // For now, we show same-tab view by replacing location to the blob URL:
@@ -279,6 +279,7 @@ export function GenerateHub() {
     </div>
   );
 }
+
 
 
 
