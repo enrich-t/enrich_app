@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -92,7 +92,7 @@ export default function LoginPage() {
         boxShadow: '0 8px 30px rgba(0,0,0,0.25)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <span style={{ color: colors.brand, fontSize: 22 }}>𝌆</span>
+          <span style={{ color: colors.brand, fontSize: 22 }}>ðŒ†</span>
           <div style={{ fontWeight: 800, letterSpacing: 0.3 }}>Enrich</div>
         </div>
 
@@ -136,7 +136,7 @@ export default function LoginPage() {
               value={pwd}
               onChange={(e) => setPwd(e.target.value)}
               style={inputStyle}
-              placeholder="••••••••"
+              placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
             />
           </label>
 
@@ -153,7 +153,7 @@ export default function LoginPage() {
               cursor: loading ? 'progress' : 'pointer'
             }}
           >
-            {loading ? 'Logging in…' : 'Log in'}
+            {loading ? 'Logging inâ€¦' : 'Log in'}
           </button>
         </form>
       </div>
@@ -170,3 +170,4 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
   fontSize: 14,
 };
+
