@@ -2,12 +2,10 @@
 
 import React, { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { clearAuth } from './auth';
 
 export default function AppHeader() {
   const router = useRouter();
   const onLogout = useCallback(() => {
-    clearAuth();
     router.replace('/login');
   }, [router]);
 
