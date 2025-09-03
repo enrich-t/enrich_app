@@ -219,7 +219,7 @@ function ReportTile({
 export function GenerateHub() {
   // We’ll use the logged-in business id/token via our existing client helpers in lib/api.ts
   // generateBusinessOverview() already posts to /api/reports/generate-business-overview
-  // SAMPLE_PREVIEW() returns a blob/pdf/json for quick preview.
+  // SAMPLE_PREVIEW returns a blob/pdf/json for quick preview.
 
   const tiles: Tile[] = useMemo(() => {
     return [
@@ -245,14 +245,10 @@ try {
           alert("Generated! It should appear under Dashboard → Recent Reports and My Reports.");
         },
         onPreview: async () => {
-          // Preview is a general sample; show in-page (new tab avoided by creating an object URL)
-          const sample = await SAMPLE_PREVIEW();
-          if (!sample) throw new Error("Download failed");
-          const url = URL.createObjectURL(sample.blob);
-          // open a light viewer inside the page if you prefer.
-          // For now, we show same-tab view by replacing location to the blob URL:
-          window.location.href = url;
-        },
+  const sample = SAMPLE_PREVIEW as any;
+  // TODO: wire this to your preview UI (e.g., setPreview(sample))
+  console.log('Sample preview', sample);
+},
       },
       {
         key: "local_impact",
@@ -264,8 +260,10 @@ try {
           alert("Local Impact generation is coming soon.");
         },
         onPreview: async () => {
-          alert("Local Impact preview is coming soon.");
-        },
+  const sample = SAMPLE_PREVIEW as any;
+  // TODO: wire this to your preview UI (e.g., setPreview(sample))
+  console.log('Sample preview', sample);
+},
       },
       {
         key: "energy_resources",
@@ -277,8 +275,10 @@ try {
           alert("Energy & Resources generation is coming soon.");
         },
         onPreview: async () => {
-          alert("Energy & Resources preview is coming soon.");
-        },
+  const sample = SAMPLE_PREVIEW as any;
+  // TODO: wire this to your preview UI (e.g., setPreview(sample))
+  console.log('Sample preview', sample);
+},
       },
     ];
   }, []);
@@ -303,6 +303,7 @@ try {
     </div>
   );
 }
+
 
 
 
