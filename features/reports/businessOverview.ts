@@ -1,34 +1,27 @@
-﻿import { apiFetch } from '../../lib/api';
-import type { ReportRow } from './types';
+﻿import { apiFetch } from "../../lib/api";
 
 export async function generateBusinessOverview(businessId: string): Promise<void> {
-  const res = await apiFetch('/reports/generate-business-overview', {
-    method: 'POST',
+  const res = await apiFetch("/reports/generate-business-overview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ business_id: businessId }),
   });
   if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`${res.status} ${t || 'Internal Server Error'}`);
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Generate failed: ${res.status} ${txt.slice(0, 500)}`);
   }
 }
 
-export async function listReports(businessId: string): Promise<ReportRow[]> {
-  const r = await apiFetch(`/reports/list/${encodeURIComponent(businessId)}`);
-  if (!r.ok) return [];
-  const data = await r.json();
-  return (data?.reports as ReportRow[]) || [];
-}
-
-export function toCsvFallback(obj: any): string {
-  const rows: string[][] = [['key', 'value']];
-  const walk = (prefix: string, v: any) => {
-    if (v && typeof v === 'object' && !Array.isArray(v)) {
-      Object.keys(v).forEach((k) => walk(prefix ? `${prefix}.${k}` : k, v[k]));
-    } else {
-      rows.push([prefix, v == null ? '' : String(v)]);
-    }
-  };
-  walk('', obj);
-  return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
-}
-
+export const SAMPLE_PREVIEW = {
+  title: "Business Overview",
+  summary: "Snapshot of performance & sustainability posture.",
+  kpis: [
+    { label: "Revenue Growth", value: "12% YoY" },
+    { label: "Market Share", value: "7.4%" },
+  ],
+  recommendations: [
+    "Expand local partnerships",
+    "Publish quarterly sustainability updates",
+  ],
+  exports: { pdf: null as any, json: null as any, csv: null as any },
+};

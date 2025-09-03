@@ -1,315 +1,110 @@
 ﻿"use client";
 
-// components/generate/GenerateHub.tsx  
+import React, { useMemo, useState } from "react";
+import { generateBusinessOverview, SAMPLE_PREVIEW } from "../../features/reports/businessOverview";
+import { apiFetch } from "../../lib/api";
+import { getBusinessId } from "../auth";
+
 async function downloadBlob(url: string, filename?: string) {
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error("Download failed");
+  if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
   const blob = await res.blob();
-  const a = document.createElement('a');
   const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
   a.href = objectUrl;
-  a.download = filename || (url.split('/').pop() || 'download');
+  a.download = filename || "download";
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(objectUrl);
 }
-import React, { useMemo, useState } from "react";
-const SAMPLE_PREVIEW = {
-  title: "Business Overview (Sample)",
-  summary: "This is a sample preview to illustrate the layout before running a real generate.",
-  kpis: [
-    { label: "Revenue (est.)", value: "\.2M" },
-    { label: "Employees", value: "24" },
-    { label: "Locations", value: "3" }
-  ],
-  recommendations: [
-    "Increase social content frequency to 3x/week.",
-    "Pilot a referral program with 10% off for new customers.",
-    "Add sustainability stats to the About page for credibility."
-  ],
-  exports: { pdf: null, json: null, csv: null }
-};
-import { generateBusinessOverview } from "../../features/reports/businessOverview";
-import { apiFetch } from "../../lib/api";
-/** Resolve active business id from env or /api/auth/me */
-async function resolveBusinessId(): Promise<string> {
-  const envId = typeof process?.env?.NEXT_PUBLIC_BUSINESS_ID === "string"
-    ? (process.env.NEXT_PUBLIC_BUSINESS_ID as string)
-    : "";
-  if (envId) return envId;
-  try {
-    const me: any = await apiFetch("/api/auth/me", { cache: "no-store" } as any);
-    const json = me?.json ?? {};
-    return (
-      json?.profile?.business_id ||
-      json?.profile?.id ||
-      json?.business?.id ||
-      ""
-    );
-  } catch {
-    return "";
-  }
-}
 
 type Tile = {
   key: "business_overview" | "local_impact" | "energy_resources";
   title: string;
-  description: string;
-  tags: string[];
-  accent: string; // hex for icon/tags outline
-  onGenerate?: () => Promise<void>;
-  onPreview?: () => Promise<void>;
+  bullets: string[];
+  accent?: string;
 };
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "24px 0 12px" }}>
-      <span
-        aria-hidden
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 6,
-          background:
-            "linear-gradient(135deg, rgba(152,129,184,.3), rgba(174,196,131,.3))",
-          display: "inline-block",
-        }}
-      />
-      <h2 style={{ fontSize: 22, margin: 0 }}>Popular Reports</h2>
-    </div>
-  );
-}
+const TILES: Tile[] = [
+  { key: "business_overview", title: "Business Overview", bullets: ["Revenue Growth", "Market Share", "Operational Efficiency"] },
+  { key: "local_impact", title: "Local Impact", bullets: ["Community Reach", "Local Partnerships", "Regional Growth"] },
+  { key: "energy_resources", title: "Energy & Resources", bullets: ["Energy Efficiency", "Carbon Footprint", "Resource Usage"] },
+];
 
-function Capsule({ children, accent }: { children: React.ReactNode; accent: string }) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "8px 14px",
-        borderRadius: 999,
-        border: `1px solid ${accent}`,
-        color: accent,
-        fontWeight: 700,
-        fontSize: 14,
-      }}
-    >
-      {children}
-    </span>
-  );
-}
+export default function GenerateHub() {
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
-function ActionButton({
-  kind,
-  onClick,
-  loading,
-}: {
-  kind: "generate" | "view";
-  onClick: () => void;
-  loading?: boolean;
-}) {
-  const isPrimary = kind === "generate";
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      style={{
-        padding: "12px 18px",
-        borderRadius: 12,
-        border: isPrimary ? "none" : "1px solid #bdb8c9",
-        background: isPrimary ? "#9881b8" : "transparent",
-        color: isPrimary ? "#0b0e13" : "#e7e6ea",
-        fontWeight: 800,
-        cursor: loading ? "not-allowed" : "pointer",
-        minWidth: 112,
-      }}
-      aria-label={isPrimary ? "Generate" : "Preview"}
-      title={isPrimary ? "Generate" : "Preview"}
-    >
-      {loading ? "…" : isPrimary ? "Generate" : "View"}
-    </button>
-  );
-}
-
-function ReportTile({
-  tile,
-}: {
-  tile: Tile;
-}) {
-  const [busy, setBusy] = useState<"generate" | "view" | null>(null);
-
-  const handle = async (which: "generate" | "view") => {
-    if (busy) return;
-    try {
-      setBusy(which);
-      if (which === "generate") {
-        if (!tile.onGenerate) return;
-        await tile.onGenerate();
-      } else {
-        if (!tile.onPreview) return;
-        await tile.onPreview();
-      }
-    } finally {
-      setBusy(null);
-    }
-  };
+  const items = useMemo(() => TILES, []);
 
   return (
-    <div
-      style={{
-        background: "#141720",
-        border: "1px solid #232633",
-        borderRadius: 16,
-        padding: 24,
-        display: "grid",
-        gridTemplateColumns: "auto 1fr auto",
-        gap: 20,
-        alignItems: "center",
-      }}
-    >
-      <div
-        aria-hidden
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: 16,
-          background: "#1c2130",
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
-        {/* simple icon dot */}
-        <div
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 6,
-            background: tile.accent,
-            opacity: 0.9,
-          }}
-        />
-      </div>
-
+    <div className="space-y-8">
       <div>
-        <h3 style={{ margin: "0 0 6px", fontSize: 28 }}>{tile.title}</h3>
-        <p style={{ margin: 0, color: "#c5c7ce", lineHeight: 1.5 }}>{tile.description}</p>
-        <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-          {tile.tags.map((t) => (
-            <Capsule key={t} accent={tile.accent}>{t}</Capsule>
-          ))}
-        </div>
+        <h1 className="text-3xl font-semibold">Generate Report</h1>
+        <p className="text-sm opacity-80">Create comprehensive reports with AI-powered insights and analysis</p>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <ActionButton
-          kind="generate"
-          onClick={() => handle("generate")}
-          loading={busy === "generate"}
-        />
-        <ActionButton
-          kind="view"
-          onClick={() => handle("view")}
-          loading={busy === "view"}
-        />
-      </div>
-    </div>
-  );
-}
+      <div className="grid gap-6 md:grid-cols-2">
+        {items.map((t) => (
+          <div key={t.key} className="rounded-2xl p-6 bg-neutral-900/40 border border-neutral-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold">{t.title}</h2>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {t.bullets.map((b) => (
+                    <span key={b} className="text-xs px-2 py-1 rounded-full border border-lime-500/40">
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  className="px-4 py-2 rounded-xl bg-purple-400 text-black font-medium disabled:opacity-50"
+                  disabled={!!busyKey}
+                  onClick={async () => {
+                    const bizId = getBusinessId();
+                    if (!bizId) { alert("No business selected. Please log in again."); return; }
 
-export function GenerateHub() {
-  // We’ll use the logged-in business id/token via our existing client helpers in lib/api.ts
-  // generateBusinessOverview() already posts to /api/reports/generate-business-overview
-  // SAMPLE_PREVIEW returns a blob/pdf/json for quick preview.
+                    try {
+                      setBusyKey(t.key);
+                      await generateBusinessOverview(bizId);
 
-  const tiles: Tile[] = useMemo(() => {
-    return [
-      {
-        key: "business_overview",
-        title: "Business Overview",
-        description: "Comprehensive analysis of performance and key metrics",
-        tags: ["Revenue Growth", "Market Share", "Operational Efficiency"],
-        accent: "#9881b8", // brand primary
-        onGenerate: async () => {
-          // Real generate for the logged in business, store in DB, refresh list
-          const bizId = await resolveBusinessId();
-if (!bizId) { alert("No business selected/found. Please log in again."); return; }
-try {
-  await generateBusinessOverview(bizId);
-} catch (e: any) {
-  console.error('Generate failed', e);
-  alert(`Generate failed: ${e?.message ?? e}`);
-  return;
-}
-          // Optionally ping a “recent reports” revalidation endpoint if you have one
-          // await apiFetch('/api/reports/revalidate', { method: 'POST' });
-          alert("Generated! It should appear under Dashboard → Recent Reports and My Reports.");
-        },
-        onPreview: async () => {
-  const sample = SAMPLE_PREVIEW as any;
-  // TODO: wire this to your preview UI (e.g., setPreview(sample))
-  console.log('Sample preview', sample);
-},
-      },
-      {
-        key: "local_impact",
-        title: "Local Impact",
-        description: "Community engagement and local market influence assessment",
-        tags: ["Community Reach", "Local Partnerships", "Regional Growth"],
-        accent: "#aec483", // brand third
-        onGenerate: async () => {
-          alert("Local Impact generation is coming soon.");
-        },
-        onPreview: async () => {
-  const sample = SAMPLE_PREVIEW as any;
-  // TODO: wire this to your preview UI (e.g., setPreview(sample))
-  console.log('Sample preview', sample);
-},
-      },
-      {
-        key: "energy_resources",
-        title: "Energy & Resources",
-        description: "Sustainability metrics and resource utilization analysis",
-        tags: ["Energy Efficiency", "Carbon Footprint", "Resource Usage"],
-        accent: "#e5c564", // brand secondary
-        onGenerate: async () => {
-          alert("Energy & Resources generation is coming soon.");
-        },
-        onPreview: async () => {
-  const sample = SAMPLE_PREVIEW as any;
-  // TODO: wire this to your preview UI (e.g., setPreview(sample))
-  console.log('Sample preview', sample);
-},
-      },
-    ];
-  }, []);
+                      // pull the latest list to surface in UI
+                      const listRes = await apiFetch(`/reports/list/${bizId}`, { cache: "no-store", noAuthRedirect: true });
+                      const txt = await listRes.text();
+                      if (!listRes.ok) throw new Error(`List failed: ${listRes.status} ${txt.slice(0,300)}`);
 
-  return (
-    <div style={{ padding: 24 }}>
-      <div style={{ marginBottom: 6 }}>
-        <h1 style={{ margin: 0, fontSize: 44 }}>Generate Report</h1>
-        <p style={{ margin: "6px 0 0", color: "#c5c7ce" }}>
-          Create comprehensive reports with AI-powered insights and analysis
-        </p>
-      </div>
+                      console.info("Latest reports:", txt);
+                      alert("Report requested. It should appear in Recent Reports shortly.");
+                    } catch (e: any) {
+                      console.error("Generate failed", e);
+                      alert(`Generate failed: ${e?.message || e}`);
+                    } finally {
+                      setBusyKey(null);
+                    }
+                  }}
+                >
+                  {busyKey === t.key ? "Generating..." : "Generate"}
+                </button>
 
-      {/* removed the global header buttons; actions live on each card */}
-      <SectionTitle>Popular Reports</SectionTitle>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
-        {tiles.map((t) => (
-          <ReportTile key={t.key} tile={t} />
+                <button
+                  className="px-4 py-2 rounded-xl border border-neutral-700"
+                  onClick={async () => {
+                    // simple JSON preview in a new tab
+                    const blob = new Blob([JSON.stringify(SAMPLE_PREVIEW, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, "_blank", "noopener,noreferrer");
+                    setTimeout(() => URL.revokeObjectURL(url), 5000);
+                  }}
+                >
+                  View
+                </button>
+              </div>
+            </div>
+          </div>
         ))}
       </div>
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
