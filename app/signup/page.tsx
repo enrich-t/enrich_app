@@ -1,9 +1,8 @@
-'use client';
+﻿'use client';
 
 import React, { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ToastProvider, useToast } from '../../components/Toast';
-import { safeJson } from '../../components/auth';
 
 export default function SignupPage() {
   return (
@@ -69,7 +68,7 @@ function SignupContent() {
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input} autoComplete="new-password" />
           </label>
           <button type="submit" disabled={loading} style={styles.primaryBtn} aria-busy={loading}>
-            {loading ? 'Creating…' : 'Sign up'}
+            {loading ? 'Creatingâ€¦' : 'Sign up'}
           </button>
         </form>
         <p style={{ marginTop: 12, opacity: 0.8 }}>
@@ -91,3 +90,7 @@ const styles: Record<string, React.CSSProperties> = {
   primaryBtn: { padding: '10px 14px', borderRadius: 10, border: '1px solid #2a2a2a', background: 'linear-gradient(180deg,#1c1c1f,#121214)', color: '#fff', cursor: 'pointer' },
   link: { color: '#7fb5ff' },
 };
+
+function safeJson(res: Response): Promise<any> {
+  return (res as any).text?.().then(t => { try { return JSON.parse(t ?? ""); } catch { return t; } });
+}
