@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -305,7 +305,7 @@ export default function AiTokensPage() {
             fontWeight: 800,
           }}
         >
-          🌿 Responsible Growth Platform
+          ðŸŒ¿ Responsible Growth Platform
         </div>
 
         <h2
@@ -326,7 +326,7 @@ export default function AiTokensPage() {
 
         <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
           <button style={btn.solid(brand.primary)} onClick={() => changePlan('free')} disabled={busy}>
-            Start Free →
+            Start Free â†’
           </button>
           <button
             style={btn.outline(brand.secondary)}
@@ -438,7 +438,7 @@ export default function AiTokensPage() {
                   </div>
                 )}
                 <div style={{ color: brand.primary, fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 20 }}>＋</span> {t.qty} Credits
+                  <span style={{ fontSize: 20 }}>ï¼‹</span> {t.qty} Credits
                 </div>
                 <div style={{ fontSize: 30, fontWeight: 900, marginTop: 6, color: brand.uiText }}>{t.price}</div>
                 <div style={{ color: brand.muted, marginTop: 2 }}>{t.per} per credit</div>
@@ -489,7 +489,7 @@ export default function AiTokensPage() {
                   fontSize: 20,
                 }}
               >
-                📷
+                ðŸ“·
               </div>
               <div style={{ fontWeight: 900 }}>Snapshot / Social Export</div>
               <span
@@ -526,7 +526,7 @@ export default function AiTokensPage() {
                   fontSize: 20,
                 }}
               >
-                📄
+                ðŸ“„
               </div>
               <div style={{ fontWeight: 900 }}>Full Business Overview Report</div>
               <span
@@ -557,9 +557,9 @@ export default function AiTokensPage() {
             borderColor: '#34284c',
           }}
         >
-          <div style={{ fontWeight: 900, color: brand.primary, marginBottom: 8 }}>⚡ Pro Tips</div>
+          <div style={{ fontWeight: 900, color: brand.primary, marginBottom: 8 }}>âš¡ Pro Tips</div>
           <ul style={{ margin: 0, paddingLeft: 18, color: brand.muted }}>
-            <li>Credits roll over month to month — they never expire</li>
+            <li>Credits roll over month to month â€” they never expire</li>
             <li>Start with social exports to test the platform before full reports</li>
             <li>Upgrade plans include bonus credits for better value</li>
           </ul>
@@ -590,3 +590,4 @@ export default function AiTokensPage() {
     </div>
   );
 }
+

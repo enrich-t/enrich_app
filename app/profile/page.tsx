@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 import Link from 'next/link';
@@ -22,7 +22,7 @@ export default function ProfilePage() {
       >
         <div style={{ fontWeight: 800, marginBottom: 8 }}>Coming soon</div>
         <div style={{ color: '#a7adbb' }}>
-          We’ll add onboarding questions and saved answers here. These will power report templates,
+          Weâ€™ll add onboarding questions and saved answers here. These will power report templates,
           AI hints, and follow-up prompts.
         </div>
         <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
@@ -58,3 +58,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

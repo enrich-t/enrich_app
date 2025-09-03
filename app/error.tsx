@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 
@@ -46,3 +46,4 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12.5,
   },
 };
+

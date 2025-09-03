@@ -94,3 +94,4 @@ const styles: Record<string, React.CSSProperties> = {
 function safeJson(res: Response): Promise<any> {
   return (res as any).text?.().then(t => { try { return JSON.parse(t ?? ""); } catch { return t; } });
 }
+

@@ -26,3 +26,4 @@ export async function DELETE() {
   res.headers.append("Set-Cookie", `enrich_user=; Path=/; Max-Age=0`);
   return res;
 }
+

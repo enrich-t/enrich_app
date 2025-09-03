@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { generateBusinessOverview } from "@/lib/api";
@@ -39,3 +39,4 @@ export default function GeneratePage() {
     </div>
   );
 }
+
