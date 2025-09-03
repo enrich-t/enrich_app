@@ -233,10 +233,13 @@ export function GenerateHub() {
           // Real generate for the logged in business, store in DB, refresh list
           const bizId = await resolveBusinessId();
 if (!bizId) { alert("No business selected/found. Please log in again."); return; }
-const res = await generateBusinessOverview(bizId);
-          if (!res.ok) {
-            throw new Error("Download failed");
-          }
+try {
+  await generateBusinessOverview(bizId);
+} catch (e: any) {
+  console.error('Generate failed', e);
+  alert(Generate failed: );
+  return;
+}
           // Optionally ping a “recent reports” revalidation endpoint if you have one
           // await apiFetch('/api/reports/revalidate', { method: 'POST' });
           alert("Generated! It should appear under Dashboard → Recent Reports and My Reports.");
@@ -300,6 +303,7 @@ const res = await generateBusinessOverview(bizId);
     </div>
   );
 }
+
 
 
 
