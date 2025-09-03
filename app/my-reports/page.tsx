@@ -9,7 +9,7 @@ export default function MyReportsPage() {
       <p className="text-sm opacity-80">
         All generated reports for your business. Use the links to view or download exports.
       </p>
-      <ReportsList title="All Reports" />
+      <ReportsList />
     </div>
   );
 }
