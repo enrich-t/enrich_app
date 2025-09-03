@@ -14,7 +14,7 @@ type Report = {
   pdf_url: string | null;
 };
 
-export function ReportsList() {
+export function ReportsList({ title = "Recent Reports" }: { title?: string }) {
   const [rows, setRows] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -49,7 +49,7 @@ export function ReportsList() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">Recent Reports</h3>
+        <h3 className="text-lg font-medium">{title}</h3>
         <button className="text-sm underline" onClick={refresh} disabled={loading}>
           {loading ? "Refreshing..." : "Refresh"}
         </button>
@@ -73,3 +73,4 @@ export function ReportsList() {
     </div>
   );
 }
+
